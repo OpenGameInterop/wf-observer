@@ -1,0 +1,19 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "diagnostics": {
+          // These macros are intentionally skipped only during editor analysis.
+          "disabled": ["proc-macro-disabled"]
+        },
+        "procMacro": {
+          "ignored": {
+            // Editor-only workaround for missing macro source spans:
+            // https://github.com/boltffi/boltffi/issues/862
+            "boltffi_macros": ["data", "error"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,5 +1,8 @@
 # Warframe Observer
 
+> [!IMPORTANT]
+> This repository currently does none of the advertised features. The memory reading api has been proven in a private repo and is currently undergoing cleanup before being integrated into this one.
+
 A local background process that reads memory from a running Warframe process on
 Linux and Windows and makes the data available to other applications.
 

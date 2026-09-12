@@ -1807,7 +1807,7 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "hotpath",
- "wf-observer",
+ "wf_observer_sdk",
 ]
 
 [[package]]
@@ -6065,21 +6065,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wf-observer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "derive_aliases",
- "getrandom 0.4.3",
- "hotpath",
- "iroh",
- "irpc",
- "irpc-iroh",
- "protocol",
- "serde",
-]
-
-[[package]]
 name = "wf-observer-cli"
 version = "0.0.1"
 dependencies = [
@@ -6102,8 +6087,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "wf-observer",
  "wf_observer_ffi",
+ "wf_observer_sdk",
  "windows-sys 0.61.2",
 ]
 
@@ -6116,7 +6101,22 @@ dependencies = [
  "pollster",
  "tokio",
  "tokio-util",
- "wf-observer",
+ "wf_observer_sdk",
+]
+
+[[package]]
+name = "wf_observer_sdk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "derive_aliases",
+ "getrandom 0.4.3",
+ "hotpath",
+ "iroh",
+ "irpc",
+ "irpc-iroh",
+ "protocol",
+ "serde",
 ]
 
 [[package]]

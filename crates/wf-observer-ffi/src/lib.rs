@@ -1,7 +1,7 @@
 //! Generated-language bindings for the WF Observer client.
 //!
 //! This crate owns only the FFI boundary. Transport behavior, reconnects, and
-//! protocol types remain in `wf-observer` and `protocol`.
+//! protocol types remain in `wf-observer-sdk` and `protocol`.
 //!
 //! If `BoltFFI` can expose a canonical Rust type without changing its natural
 //! design, export that type directly. If the binding generator would dictate
@@ -12,11 +12,11 @@ mod runtime;
 use std::sync::Arc;
 
 use iroh_tickets::endpoint::EndpointTicket;
-use wf_observer::EndpointId;
+use wf_observer_sdk::EndpointId;
 
 /// Client exposed to generated language bindings.
 pub struct ObserverClient {
-    inner: Arc<wf_observer::Client>,
+    inner: Arc<wf_observer_sdk::Client>,
 }
 
 /// Connects using an Iroh endpoint ticket or stable endpoint identifier.
@@ -32,7 +32,7 @@ pub struct ObserverClient {
 #[boltffi::export]
 pub async fn connect(endpoint: String) -> Result<ObserverClient, String> {
     let address = parse_endpoint(&endpoint)?;
-    let client = Box::pin(runtime::execute(wf_observer::Client::connect(address)))
+    let client = Box::pin(runtime::execute(wf_observer_sdk::Client::connect(address)))
         .await?
         .map_err(|error| format!("{error:#}"))?;
 
@@ -71,7 +71,7 @@ impl ObserverClient {
     }
 }
 
-fn parse_endpoint(endpoint: &str) -> Result<wf_observer::EndpointAddr, String> {
+fn parse_endpoint(endpoint: &str) -> Result<wf_observer_sdk::EndpointAddr, String> {
     if let Ok(ticket) = endpoint.parse::<EndpointTicket>() {
         return Ok(ticket.endpoint_addr().clone());
     }

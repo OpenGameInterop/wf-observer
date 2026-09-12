@@ -1,5 +1,5 @@
 [package]
-name = "wf-observer"
+name = "wf_observer_sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

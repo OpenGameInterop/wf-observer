@@ -34,7 +34,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf-observer") | .version')"
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf-observer-sdk") | .version')"
           boltffi_version="$(awk -F '"' '/^version = "/ { print $2; exit }' boltffi.toml)"
 
           if [[ -z "$version" || "$version" != "$boltffi_version" ]]; then

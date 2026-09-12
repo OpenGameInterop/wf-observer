@@ -153,7 +153,7 @@ mod tests {
         let address = server.endpoint().addr();
 
         let exchange_result = async {
-            let client = wf_observer::Client::connect(address).await?;
+            let client = wf_observer_sdk::Client::connect(address).await?;
             let ping_result = client.ping().await;
             client.close().await;
             ping_result

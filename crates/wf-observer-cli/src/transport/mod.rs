@@ -14,3 +14,6 @@ mod client_tests;
 
 #[cfg(test)]
 mod sdk_api_tests;
+
+#[cfg(test)]
+mod warframe_tests;

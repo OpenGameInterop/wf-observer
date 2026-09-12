@@ -3,7 +3,10 @@
 use memory_reader::{ProcessMemory, ProcessMetadata, Target};
 use provider_sdk::{GameDescriptor, Provider, ProviderError, ProviderManifest, ProviderSession};
 
-use crate::{matching, session::WarframeSession};
+use crate::{
+    matching,
+    session::{INVENTORY, WarframeSession},
+};
 
 static MANIFEST: ProviderManifest = ProviderManifest {
     id: "opengameinterop.warframe",
@@ -13,11 +16,11 @@ static MANIFEST: ProviderManifest = ProviderManifest {
         id: "warframe",
         name: "Warframe",
     },
-    capabilities: &[],
+    capabilities: &[INVENTORY],
 };
 
-/// Built-in Warframe identification; it advertises no telemetry until implemented.
-#[derive(Debug, Clone, Copy, Default)]
+/// Built-in Warframe identification and validated account data acquisition.
+#[derive(Debug, Default, ..Copy)]
 pub struct WarframeProvider;
 
 impl Provider for WarframeProvider {
@@ -39,6 +42,6 @@ impl Provider for WarframeProvider {
         {
             return Err(ProviderError::InvalidTarget);
         }
-        Ok(Box::new(WarframeSession))
+        Ok(Box::new(WarframeSession::default()))
     }
 }

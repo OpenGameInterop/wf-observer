@@ -11,6 +11,7 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 boltffi = { workspace = true }
 derive_aliases = { workspace = true }
 protocol = { path = "../protocol" }
+warframe-model = { path = "../games/warframe/model" }
 
 iroh = { workspace = true }
 irpc = { workspace = true }

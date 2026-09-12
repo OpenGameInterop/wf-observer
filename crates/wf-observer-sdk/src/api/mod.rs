@@ -4,11 +4,18 @@
 
 pub(crate) mod client;
 pub(crate) mod error;
+pub(crate) mod inventory;
+pub(crate) mod inventory_watch;
 pub(crate) mod models;
 mod runtime;
+mod stream;
 pub(crate) mod subscription;
+pub(crate) mod warframe;
 
 pub use client::{ObserverClient, connect, connect_local};
 pub use error::ObserverError;
+pub use inventory::*;
+pub use inventory_watch::{InventoryCapability, InventoryState, InventoryWatch};
 pub use models::*;
 pub use subscription::ObserverSubscription;
+pub use warframe::{Warframe, WarframeSession};

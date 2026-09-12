@@ -6896,6 +6896,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "derive_aliases",
  "fastant",
  "semver 1.0.28",
  "serde",

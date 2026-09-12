@@ -1,10 +1,9 @@
 # Android/Kotlin example
 
-Android bindings are currently unsupported, and packaging is disabled in
-`boltffi.toml`.
+Android packaging is disabled in [boltffi.toml](../../../boltffi.toml).
 
 Iroh requires Android-specific JVM and application-context initialization.
-Support will remain disabled until the binding owns initialization and the
-packaged result has Android instrumentation coverage.
+Enabling it requires that initialization in the binding and an instrumentation
+test of the packaged client.
 
 See [Iroh's Android requirements](https://docs.rs/iroh/latest/iroh/endpoint/struct.Endpoint.html#usage-on-android).

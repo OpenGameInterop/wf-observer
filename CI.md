@@ -28,7 +28,11 @@ cargo clippy --locked -p example-rust-dioxus --all-targets --features dioxus/des
 cargo build --locked -p example-rust-dioxus --features dioxus/desktop
 ```
 
-`just check` runs this complete local sequence.
+`just check` runs this local sequence. With the browser target installed, also run:
+
+```bash
+cargo check --locked --target wasm32-unknown-unknown -p example-rust-dioxus --features dioxus/web
+```
 
 ## Workflow Linting
 
@@ -44,11 +48,11 @@ actionlint
 
 ## Language Bindings
 
-The required CI workflow packages selected native bindings on Linux. Java,
-Gradle, .NET, Python, Binaryen, and their package/example steps are enabled
+The required CI workflow packages selected bindings on Linux. Java,
+Gradle, .NET, Python, Node.js/TypeScript, and their package/example steps are enabled
 independently from the changed paths. A Gradle-only change therefore runs only
-the JVM portion. Shared FFI, client, service, memory-reader, or binding
-configuration changes conservatively select every affected language. Swift
+the JVM portion. Shared SDK, portable model, or binding configuration
+changes select every affected language; native provider changes use core Rust CI. Swift
 runs on macOS only for shared or Swift-specific changes. Artifact uploads are
 reserved for release workflows.
 
@@ -59,7 +63,8 @@ Generated files live under the ignored `dist/` directory.
 
 Requires [Just](https://just.systems/), [BoltFFI](https://www.boltffi.dev/)
 0.30.1, Clang, JDK 17, the .NET 10 SDK, and Python 3.10 or newer. Browser
-packaging requires Binaryen 123 or newer. Swift
+packaging also requires Node.js and TypeScript (`tsc` on PATH); CI uses Node 24
+and TypeScript 5.9.3. Optimized browser releases need Binaryen 123 or newer. Swift
 packaging additionally requires macOS and Xcode. `pack` regenerates the binding
 before building the artifact consumed by each example.
 
@@ -74,19 +79,34 @@ just binding wasm
 just binding apple
 ```
 
-The example runner packages each required binding once, starts a temporary
-service, passes its endpoint ticket to every selected example, and shuts the
-service down afterwards:
+The example runner packages each required binding once and checks the consumers
+without starting a service or requiring a game:
 
 ```bash
-just example python csharp java kotlin
+just example python csharp java kotlin --check
 # macOS only
-just example swift
+just example swift --check
 ```
 
-The Dioxus showcase is linted and linked on Linux and checked on Windows only
-when the showcase or one of its workspace dependencies changes. Its
-game-dependent behaviour will remain local-only.
+Compiled examples are built against the generated packages. Python imports the
+wheel and example without executing its entrypoint. SDK and native-runtime behavior is
+covered by the ordinary Rust integration tests in the core workspace.
+
+To exercise a generated client against a logged-in game locally, start the
+normal service and pass its endpoint ID to the same example:
+
+```bash
+wf-observer start
+wf-observer status
+just example python --endpoint ENDPOINT_ID
+```
+
+This prints currency balances and shuts down the client; it does not stop the
+service.
+
+The Dioxus showcase is linted and linked on Linux, checked for the browser target
+on Linux, and checked for desktop on Windows when the showcase or a dependency
+changes. Game-dependent behavior is not tested in CI.
 
 Android generation remains disabled until the generated JNI boundary installs
 the JVM context required by [Iroh on Android](https://docs.rs/iroh/latest/iroh/endpoint/struct.Endpoint.html#usage-on-android).
@@ -182,8 +202,3 @@ to be installed locally.
 ```bash
 cargo semver-checks
 ```
- 
-## Hotpath
-
-Hotpath is our profiling tool of choice. Profiling is not ran in CI as the workload
-is dependant on a warframe.exe process running.

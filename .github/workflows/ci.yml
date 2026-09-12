@@ -284,6 +284,13 @@ jobs:
           cargo ${{ matrix.command }} --locked --profile ci
           -p example-rust-dioxus --features dioxus/desktop
 
+      - name: Check Dioxus browser showcase
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo check --locked --profile ci --target wasm32-unknown-unknown \
+            -p example-rust-dioxus --features dioxus/web
+
   bindings-native:
     name: CI / Bindings (native)
     needs: plan
@@ -348,6 +355,16 @@ jobs:
       - name: Install BoltFFI CLI
         run: cargo install --locked --version 0.30.1 boltffi_cli
 
+      - name: Install Node.js
+        if: needs.plan.outputs.wasm == 'true'
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: "24"
+
+      - name: Install TypeScript
+        if: needs.plan.outputs.wasm == 'true'
+        run: npm install --global typescript@5.9.3
+
       # WASM is the quickest binding and has caught toolchain drift before, so
       # validate it before the more expensive native packages when selected.
       - name: Package browser binding
@@ -386,7 +403,7 @@ jobs:
           --cargo-arg=--profile=ci
           --python "${{ steps.python.outputs.python-path }}"
 
-      - name: Run selected console examples
+      - name: Check selected console examples
         if: >-
           needs.plan.outputs.jvm == 'true' ||
           needs.plan.outputs.csharp == 'true' ||
@@ -404,7 +421,7 @@ jobs:
           if [[ "$RUN_JVM" == "true" ]]; then targets+=(java kotlin); fi
 
           command=(cargo run --locked --profile ci -p xtask --
-            example --no-package --profile ci)
+            example --check --no-package --profile ci)
           if [[ "$RUN_PYTHON" == "true" ]]; then
             command+=(--python "$PYTHON_PATH")
           fi
@@ -444,10 +461,10 @@ jobs:
           boltffi --overlay boltffi.ci.toml pack apple --deny-skipped
           --cargo-arg=--profile=ci
 
-      - name: Run packaged Swift example
+      - name: Build packaged Swift example
         run: >-
           cargo run --locked --profile ci -p xtask --
-          example --no-package --profile ci swift
+          example --check --no-package --profile ci swift
 
   links:
     name: CI / Links
@@ -496,7 +513,7 @@ jobs:
       - name: Validate package versions
         shell: bash
         run: |
-          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf-observer-sdk") | .version')"
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf_observer_sdk") | .version')"
           boltffi_version="$(awk -F '"' '/^version = "/ { print $2; exit }' boltffi.toml)"
           [[ -n "$version" && "$version" == "$boltffi_version" ]]
 

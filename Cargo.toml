@@ -4,6 +4,8 @@ members = [
     "examples/rust/dioxus",
     "crates/wf-observer-cli",
     "crates/memory-reader",
+    "crates/provider-sdk",
+    "crates/games/warframe/provider",
     "crates/protocol",
     "crates/wf-observer-sdk",
     "crates/wf-observer-ffi",
@@ -70,6 +72,10 @@ hotpath = { version = "0.24" }
 
 # Some dependencies can spam this causing perf issues.
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+
+strum = { version = "0.28" }
+
+n0-future = { version = "0.3" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

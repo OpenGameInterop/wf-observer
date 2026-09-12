@@ -21,7 +21,7 @@ pub use iroh::{EndpointAddr, EndpointId};
 /// endpoint identity.
 pub struct Client {
     endpoint: Endpoint,
-    rpc: irpc::Client<protocol::ObserverProtocol>,
+    rpc: irpc::Client<protocol::v1::ObserverProtocolV1>,
 }
 
 impl Client {
@@ -33,10 +33,10 @@ impl Client {
     /// service cannot be reached using the current protocol version.
     pub async fn connect(address: EndpointAddr) -> anyhow::Result<Self> {
         let endpoint = Endpoint::bind(presets::N0).await?;
-        let rpc = irpc_iroh::client::<protocol::ObserverProtocol>(
+        let rpc = irpc_iroh::client::<protocol::v1::ObserverProtocolV1>(
             endpoint.clone(),
             address,
-            protocol::ALPN_V0,
+            protocol::v1::ALPN_V1,
         );
         let client = Self { endpoint, rpc };
 
@@ -58,7 +58,7 @@ impl Client {
     pub async fn ping(&self) -> anyhow::Result<()> {
         let _ = self
             .rpc
-            .rpc(protocol::Ping)
+            .rpc(protocol::v1::Ping)
             .await
             .context("ping request failed")?;
 

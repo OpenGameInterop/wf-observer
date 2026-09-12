@@ -8,7 +8,6 @@ members = [
     "crates/games/warframe/provider",
     "crates/protocol",
     "crates/wf-observer-sdk",
-    "crates/wf-observer-ffi",
     "xtask",
 ]
 

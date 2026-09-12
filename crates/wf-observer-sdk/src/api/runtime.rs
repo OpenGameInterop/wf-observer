@@ -1,9 +1,11 @@
-//! Async execution at the foreign-runtime boundary.
+//! Shared executor for SDK calls from Rust, native bindings, and the browser.
+
+use super::ObserverError;
 
 use std::future::Future;
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub(crate) async fn execute<F>(future: F) -> Result<F::Output, String>
+pub(crate) async fn execute<F>(future: F) -> Result<F::Output, ObserverError>
 where
     F: Future,
 {
@@ -11,7 +13,7 @@ where
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-pub(crate) async fn execute<F>(future: F) -> Result<F::Output, String>
+pub(crate) async fn execute<F>(future: F) -> Result<F::Output, ObserverError>
 where
     F: Future + Send + 'static,
     F::Output: Send + 'static,
@@ -31,11 +33,15 @@ where
                 .map_err(|error| format!("failed to create the WF Observer async runtime: {error}"))
         })
         .as_ref()
-        .map_err(Clone::clone)?;
+        .map_err(|message| ObserverError::Runtime {
+            message: message.clone(),
+        })?;
 
     AbortOnDropHandle::new(runtime.spawn(future))
         .await
-        .map_err(|error| format!("WF Observer async task failed: {error}"))
+        .map_err(|error| ObserverError::Runtime {
+            message: format!("WF Observer async task failed: {error}"),
+        })
 }
 
 #[cfg(all(test, not(all(target_family = "wasm", target_os = "unknown"))))]
@@ -50,7 +56,7 @@ mod tests {
     };
 
     #[test]
-    fn runs_futures_on_the_tokio_runtime() -> Result<(), String> {
+    fn runs_futures_on_the_tokio_runtime() -> Result<(), super::ObserverError> {
         let caller = thread::current().id();
         let worker = pollster::block_on(super::execute(async {
             tokio::time::sleep(Duration::from_millis(1)).await;

@@ -13,8 +13,8 @@ use wf_observer_sdk as sdk;
 use wf_observer_sdk::raw::{
     Client,
     warframe::{
-        AccountId, InventoryFamily, InventoryFamilySnapshot, InventoryItemCount, InventorySnapshot,
-        ItemKey, decode_inventory,
+        AccountId, CurrencyBalances, CurrencySnapshot, InventoryFamily, InventoryFamilySnapshot,
+        InventoryItemCount, InventorySnapshot, ItemKey, decode_currencies, decode_inventory,
     },
 };
 
@@ -68,6 +68,14 @@ impl TestWarframe {
             })
             .transpose()?;
         self.publish_payload("warframe.inventory", payload, reset)
+    }
+
+    fn publish_currencies(&self, account_id: &str, reset: bool) -> anyhow::Result<()> {
+        self.publish_payload(
+            "warframe.currencies",
+            Some(serde_json::to_value(currencies(account_id)?)?),
+            reset,
+        )
     }
 
     fn publish_payload(
@@ -156,6 +164,18 @@ fn inventory(account_id: &str, quantity: u64) -> anyhow::Result<InventorySnapsho
     )?)
 }
 
+fn currencies(account_id: &str) -> anyhow::Result<CurrencySnapshot> {
+    Ok(CurrencySnapshot {
+        account_id: AccountId::new(account_id)?,
+        balances: CurrencyBalances {
+            credits: i32::MAX,
+            endo: 0,
+            tradable_platinum: -7,
+            non_tradable_platinum: 50,
+        },
+    })
+}
+
 #[tokio::test]
 async fn inventory_payload_reaches_raw_and_concrete_sdk_clients() -> anyhow::Result<()> {
     let test = TestWarframe::start().await?;
@@ -241,5 +261,274 @@ async fn inventory_payload_reaches_raw_and_concrete_sdk_clients() -> anyhow::Res
     concrete.shutdown().await.map_err(anyhow::Error::msg)?;
     sub.close();
     client.close().await;
+    test.close().await
+}
+
+#[tokio::test]
+async fn currencies_stream_and_cache_are_independent_of_inventory_health() -> anyhow::Result<()> {
+    let test = TestWarframe::start().await?;
+    let client = Client::connect(test.server.endpoint().addr()).await?;
+    let inventory_sub = client
+        .subscribe_inventory(wire::SessionSelector::All)
+        .await?;
+    let sub = client
+        .subscribe_currencies(wire::SessionSelector::All)
+        .await?;
+    test.publish_currencies(ACCOUNT_ID, false)?;
+    test.publish(ACCOUNT_ID, 1, false, false)?;
+    let data = decode_currencies(next_snapshot(&sub).await?)?;
+    assert_eq!(data.data, currencies(ACCOUNT_ID)?);
+    let cached = client
+        .currencies_snapshot(&data.metadata.source.session)
+        .await?;
+    assert_eq!(cached.data, data.data);
+    assert_eq!(cached.metadata, data.metadata);
+    assert!(matches!(
+        client
+            .inventory_snapshot(&data.metadata.source.session)
+            .await,
+        Err(wf_observer_sdk::raw::ClientError::Request(
+            wire::RequestError::Unavailable { .. }
+        ))
+    ));
+    test.publish_currencies(OTHER_ACCOUNT_ID, true)?;
+    let fresh = client
+        .currencies_snapshot(&data.metadata.source.session)
+        .await?;
+    assert_eq!(fresh.data.account_id.as_str(), OTHER_ACCOUNT_ID);
+    assert!(fresh.metadata.generation > data.metadata.generation);
+    test.publish_payload("warframe.currencies", None, false)?;
+    assert!(matches!(
+        client
+            .currencies_snapshot(&data.metadata.source.session)
+            .await,
+        Err(wf_observer_sdk::raw::ClientError::Request(
+            wire::RequestError::Unavailable { .. }
+        ))
+    ));
+    sub.close();
+    inventory_sub.close();
+    client.close().await;
+    test.close().await
+}
+
+async fn demand(test: &TestWarframe, count: usize) -> anyhow::Result<()> {
+    timeout(Duration::from_secs(5), async {
+        while test.state.subscription_count() != count {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn typed_capabilities_share_demand_and_preserve_current_state() -> anyhow::Result<()> {
+    use wf_observer_sdk::TryStreamExt as _;
+    use wf_observer_sdk::raw::State;
+    let test = TestWarframe::start().await?;
+    let client = Client::connect_endpoint(&test.ticket()).await?;
+    let session = session_ref(&client).await?;
+    let currencies = wf_observer_sdk::raw::Capability::<
+        wf_observer_sdk::raw::warframe::CurrenciesTopic,
+    >::new(client.clone(), session);
+    assert_eq!(test.state.subscription_count(), 0);
+    assert!(currencies.cached().await?.is_none());
+    let first = currencies.watch().await?;
+    let second = currencies.watch().await?;
+    demand(&test, 1).await?;
+    assert!(matches!(first.next().await?, Some(State::Waiting)));
+    test.publish_currencies(ACCOUNT_ID, false)?;
+    let Some(State::Ready(value)) = timeout(Duration::from_secs(5), first.next()).await?? else {
+        anyhow::bail!("expected typed currency data");
+    };
+    assert_eq!(value.data, super::warframe_tests::currencies(ACCOUNT_ID)?);
+    let State::Ready(current) = first.current()? else {
+        anyhow::bail!("current data missing");
+    };
+    assert!(std::sync::Arc::ptr_eq(&value, &current));
+    assert_eq!(currencies.read().await?.data, value.data);
+    demand(&test, 1).await?;
+    first.close();
+    assert!(first.current().is_err());
+    assert!(first.next().await?.is_none());
+    let mut stream = second.into_stream();
+    assert!(matches!(stream.try_next().await?, Some(State::Ready(_))));
+    drop(stream);
+    demand(&test, 0).await?;
+    drop(client);
+    // Session/capability handles keep the client alive, without keeping demand alive.
+    assert!(currencies.cached().await?.is_none());
+    test.state.shutdown();
+    test.server.shutdown().await
+}
+
+#[tokio::test]
+async fn one_shot_reads_acquire_and_release_on_success_timeout_and_cancellation()
+-> anyhow::Result<()> {
+    use wf_observer_sdk::raw::ClientError;
+    let test = TestWarframe::start().await?;
+    let client = Client::connect(test.server.endpoint().addr()).await?;
+    let currencies = wf_observer_sdk::raw::Capability::<
+        wf_observer_sdk::raw::warframe::CurrenciesTopic,
+    >::new(client.clone(), session_ref(&client).await?);
+    let (value, published) = tokio::join!(currencies.read(), async {
+        demand(&test, 1).await?;
+        test.publish_currencies(ACCOUNT_ID, false)
+    });
+    published?;
+    assert_eq!(value?.data.account_id.as_str(), ACCOUNT_ID);
+    demand(&test, 0).await?;
+    assert!(matches!(
+        currencies
+            .read_with_timeout(Duration::from_millis(40))
+            .await,
+        Err(ClientError::Timeout)
+    ));
+    demand(&test, 0).await?;
+    let mut read = Box::pin(currencies.read());
+    tokio::select! {
+        result = &mut read => anyhow::bail!("read unexpectedly completed: {result:?}"),
+        result = demand(&test, 1) => result?,
+    }
+    drop(read);
+    demand(&test, 0).await?;
+    client.close().await;
+    test.state.shutdown();
+    test.server.shutdown().await
+}
+
+#[tokio::test]
+async fn typed_watch_invalidates_on_unavailability_and_reports_termination_once()
+-> anyhow::Result<()> {
+    use wf_observer_sdk::raw::{ClientError, State};
+    let test = TestWarframe::start().await?;
+    let client = Client::connect(test.server.endpoint().addr()).await?;
+    let inventory = wf_observer_sdk::raw::Capability::<
+        wf_observer_sdk::raw::warframe::InventoryTopic,
+    >::new(client.clone(), session_ref(&client).await?);
+    let watch = inventory.watch().await?;
+    watch.next().await?;
+    test.publish(ACCOUNT_ID, 7, false, true)?;
+    assert!(matches!(watch.next().await?, Some(State::Ready(_))));
+    test.publish(ACCOUNT_ID, 0, false, false)?;
+    assert!(matches!(watch.next().await?, Some(State::Unavailable(_))));
+    assert!(matches!(watch.current()?, State::Unavailable(_)));
+    assert!(matches!(
+        inventory.read().await,
+        Err(ClientError::Request(wire::RequestError::Unavailable { .. }))
+    ));
+    test.state.shutdown();
+    assert!(matches!(watch.next().await, Err(ClientError::Ended(_))));
+    assert!(watch.next().await?.is_none());
+    assert!(watch.current().is_err());
+    client.close().await;
+    test.server.shutdown().await
+}
+
+async fn session_ref(client: &Client) -> anyhow::Result<wire::SessionRef> {
+    let state = client.status().await?;
+    Ok(wire::SessionRef {
+        run_id: state.cursor.run_id,
+        session_id: "inventory".into(),
+    })
+}
+
+#[tokio::test]
+async fn shared_sdk_selects_sessions_explicitly_and_never_retargets_stale_handles()
+-> anyhow::Result<()> {
+    use wf_observer_sdk::{ObserverError, RequestError};
+    let test = TestWarframe::start().await?;
+    let client = wf_observer_sdk::connect(test.ticket()).await?;
+    let scope = client.warframe();
+    let game = scope.single_session().await?;
+    let target = |id: u32, session_id: &str| runtime::TargetStatus {
+        target: runtime::TargetInfo {
+            process: runtime::RecordedProcess {
+                pid: id,
+                start_marker: 1,
+            },
+            executable: "Warframe.x64.exe".into(),
+            provider_id: "opengameinterop.warframe".into(),
+            game_id: "warframe".into(),
+        },
+        activity: runtime::Activity::Observing {
+            session_id: session_id.into(),
+        },
+    };
+    test.state.update_lifecycle(runtime::HostStatus {
+        discovery_error: None,
+        targets: vec![target(1, "inventory"), target(2, "second")],
+    })?;
+    assert!(matches!(
+        scope.single_session().await,
+        Err(ObserverError::AmbiguousSession)
+    ));
+    let sessions = scope.sessions().await?;
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(scope.session(sessions[0].clone())?.info(), sessions[0]);
+    assert_eq!(test.state.subscription_count(), 0);
+    test.state.update_lifecycle(runtime::HostStatus {
+        discovery_error: None,
+        targets: vec![target(2, "second")],
+    })?;
+    assert!(matches!(
+        game.currencies().read().await,
+        Err(ObserverError::Request {
+            error: RequestError::UnknownSession { .. }
+        })
+    ));
+    test.state.update_lifecycle(runtime::HostStatus {
+        discovery_error: None,
+        targets: vec![],
+    })?;
+    assert!(matches!(
+        scope.single_session().await,
+        Err(ObserverError::NoSession)
+    ));
+    client.shutdown().await?;
+    test.close().await
+}
+
+#[tokio::test]
+async fn shared_sdk_streams_and_one_shot_cancellation_release_independent_demand()
+-> anyhow::Result<()> {
+    use wf_observer_sdk::{CurrenciesState, ObserverError, TryStreamExt as _};
+    let test = TestWarframe::start().await?;
+    let client = wf_observer_sdk::connect(test.ticket()).await?;
+    let game = client.warframe().single_session().await?;
+    let currencies = game.currencies();
+    let watch = currencies.watch().await?;
+    let mut stream = currencies.watch().await?.into_stream();
+    demand(&test, 1).await?;
+    assert!(matches!(
+        stream.try_next().await?,
+        Some(CurrenciesState::Waiting)
+    ));
+    test.publish_currencies(ACCOUNT_ID, false)?;
+    assert!(matches!(
+        stream.try_next().await?,
+        Some(CurrenciesState::Ready { .. })
+    ));
+    let value = currencies.read().await?;
+    assert_eq!(value.account_id, ACCOUNT_ID);
+    assert_eq!(watch.current()?, CurrenciesState::Ready { value });
+    drop(stream);
+    demand(&test, 1).await?;
+    watch.cancel();
+    demand(&test, 0).await?;
+    assert!(matches!(
+        currencies.read_with_timeout(40).await,
+        Err(ObserverError::Timeout)
+    ));
+    demand(&test, 0).await?;
+    let mut read = Box::pin(currencies.read());
+    tokio::select! {
+        result = &mut read => anyhow::bail!("read unexpectedly completed: {result:?}"),
+        result = demand(&test, 1) => result?,
+    }
+    drop(read);
+    demand(&test, 0).await?;
+    client.shutdown().await?;
     test.close().await
 }

@@ -10,4 +10,4 @@ mod health;
 mod polling;
 mod validation;
 
-pub(crate) use polling::{INVENTORY, WarframeSession};
+pub(crate) use polling::{CURRENCIES, INVENTORY, WarframeSession};

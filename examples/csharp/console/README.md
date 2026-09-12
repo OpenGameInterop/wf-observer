@@ -1,15 +1,10 @@
 # C# console example
 
-This example consumes the generated NuGet package and performs one complete
-connection, ping, and graceful shutdown. It does not require a running game or
-data source.
-
-Run it from the repository root with the .NET 10 SDK installed:
+Requires the .NET 10 SDK.
 
 ```bash
-just example csharp
+just example csharp --endpoint ENDPOINT_ID
 ```
 
-The runner packages the binding, starts a temporary service, supplies its
-endpoint ticket, and shuts it down afterwards. The bindings workflow performs
-the same exchange automatically.
+See the [examples overview](../../README.md) for service setup, packaging and
+the game-free `--check` mode.

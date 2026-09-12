@@ -1,6 +1,4 @@
 # Dependency-aware file groups used by the required pull-request workflow.
-# Keep language-specific example documentation out of build groups; the links
-# group still validates those files.
 rust:
   - "Cargo.lock"
   - "Cargo.toml"
@@ -22,6 +20,8 @@ dioxus:
   - "crates/protocol/Cargo.toml"
   - "crates/wf-observer-sdk/**/*.rs"
   - "crates/wf-observer-sdk/Cargo.toml"
+  - "crates/games/warframe/model/**/*.rs"
+  - "crates/games/warframe/model/Cargo.toml"
   - "examples/rust/dioxus/src/**"
   - "examples/rust/dioxus/assets/**"
   - "examples/rust/dioxus/public/**"
@@ -33,15 +33,12 @@ bindings_common:
   - "Cargo.lock"
   - "Cargo.toml"
   - "rust-toolchain.toml"
+  - ".cargo/**"
   - "boltffi.toml"
   - "crates/protocol/**/*.rs"
   - "crates/protocol/Cargo.toml"
-  - "crates/memory-reader/**/*.rs"
-  - "crates/memory-reader/Cargo.toml"
-  - "crates/wf-observer-cli/**/*.rs"
-  - "crates/wf-observer-cli/Cargo.toml"
-  - "crates/wf-observer-sdk/**/*.rs"
-  - "crates/wf-observer-sdk/Cargo.toml"
+  - "crates/games/warframe/model/**/*.rs"
+  - "crates/games/warframe/model/Cargo.toml"
   - "crates/wf-observer-sdk/**/*.rs"
   - "crates/wf-observer-sdk/Cargo.toml"
   - "xtask/**/*.rs"
@@ -69,6 +66,7 @@ python:
   - "examples/python/**/requirements*.txt"
 
 wasm:
+  - "boltffi.ci.toml"
   - "examples/browser/**"
   - "examples/typescript/**"
   - "examples/wasm/**"

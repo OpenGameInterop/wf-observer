@@ -1,17 +1,41 @@
 # Examples
 
-Examples are grouped by language and then by framework or application type.
+The [Dioxus showcase](rust/dioxus) displays player details, currencies,
+inventory, chat, and service status through typed SDK watches.
 
-- `rust/dioxus` demonstrates the full API.
-- The console examples exercise the minimal FFI bindings by connecting,
-  pinging, and shutting down.
+Each console example connects, selects the single Warframe session, reads its
+currency balances, and shuts down the client using a generated binding.
 
-Run one or more console examples from the repository root with
-[Just](https://just.systems/). The runner packages their bindings and manages a
-temporary service automatically:
+Run these commands from the repository root, log in to Warframe, and copy the
+endpoint ID from `status`:
 
 ```bash
-just example python csharp java kotlin
+cargo run --locked -p wf-observer-cli -- start
+cargo run --locked -p wf-observer-cli -- status
+just example python csharp java kotlin --endpoint ENDPOINT_ID
+# macOS only:
+just example swift --endpoint ENDPOINT_ID
 ```
 
-The Swift example requires macOS and can be run with `just example swift`.
+Install the [binding prerequisites](../CI.md#generated-bindings) for the selected
+languages. The runner packages each binding once; `--no-package` reuses packages
+under `dist/`. It leaves the service running when the examples finish.
+
+To build compiled examples and import the Python example without a service or
+game:
+
+```bash
+just example python csharp java kotlin --check
+```
+
+The examples require exactly one observing Warframe session. With several
+sessions, use `client.warframe().sessions()` and `session(info)` to select one.
+Reads have a default 30-second deadline and return errors for unavailable data.
+
+Await watch and client shutdown before disposing generated objects; JVM
+`close()` cannot await network cleanup. Kotlin/JVM uses Java's
+`CompletableFuture`; coroutine applications can use an `await()` adapter.
+
+API behavior and Rust usage examples live in the
+[SDK documentation](../crates/wf-observer-sdk/src/lib.rs). Endpoint access
+limitations are described in the [project overview](../README.md).

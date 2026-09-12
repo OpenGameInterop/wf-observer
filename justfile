@@ -26,14 +26,14 @@ showcase *args:
 links *args:
     lychee {{ args }} './**/*.md' './**/*.rs' './**/*.toml' './**/*.yml' './**/*.yaml' './**/*.css'
 
-# Run a Warframe Observer CLI command; defaults to `run`.
-observer *args="run":
+# Run a Warframe Observer CLI command; defaults to `start`.
+observer *args="start":
     cargo run --locked -p wf-observer-cli -- {{ args }}
 
 # Package a BoltFFI target, such as `python`, `java`, `csharp`, `wasm`, or `apple`.
 binding target *args:
     boltffi pack {{ target }} --deny-skipped {{ args }}
 
-# Package bindings and run one or more console examples against a temporary service.
+# Package bindings and run currencies examples, or check them without a game.
 example +args:
     cargo run --locked -p xtask -- example {{ args }}

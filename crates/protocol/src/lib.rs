@@ -15,6 +15,8 @@ use irpc::{channel::oneshot, rpc_requests};
 
 mod derive_alias;
 
+pub mod v1;
+
 /// Iroh ALPN for wire-protocol version 0.
 pub const ALPN_V0: &[u8] = b"wf-observer/0";
 

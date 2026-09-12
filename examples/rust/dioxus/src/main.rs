@@ -1,17 +1,9 @@
-use dioxus::prelude::*;
+mod app;
+mod components;
+mod panels;
+mod sdk;
 
 #[hotpath::main]
 fn main() {
-    dioxus::launch(App);
-}
-
-#[component]
-#[allow(non_snake_case)]
-fn App() -> Element {
-    rsx! {
-        main {
-            h1 { "WF Observer" }
-            p { "Dioxus client showcase" }
-        }
-    }
+    dioxus::launch(app::App);
 }

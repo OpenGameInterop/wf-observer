@@ -60,15 +60,17 @@ pub mod warframe;
 mod watch;
 
 pub use api::{
-    CapabilityDescriptor, CapabilityHealth, Catalog, CurrenciesCapability, CurrenciesState,
-    CurrenciesWatch, CurrencyBalances, DataEnvelope, DiscoveryHealth, EnvelopeMetadata,
-    EventEnvelope, GameDescriptor, InventoryCapability, InventoryFamily, InventoryFamilySnapshot,
-    InventoryItemCount, InventoryState, InventoryWatch, ObserverClient, ObserverError,
-    ObserverSubscription, ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason,
-    ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector,
-    SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess,
-    TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe,
-    WarframeCurrencies, WarframeInventory, WarframeSession, connect, connect_local,
+    CapabilityDescriptor, CapabilityHealth, Catalog, ChatCapability, ChatChannel, ChatMessage,
+    ChatObservation, ChatState, ChatTime, ChatUpdate, ChatWatch, CurrenciesCapability,
+    CurrenciesState, CurrenciesWatch, CurrencyBalances, DataEnvelope, DiscoveryHealth,
+    EnvelopeMetadata, EventEnvelope, GameDescriptor, InventoryCapability, InventoryFamily,
+    InventoryFamilySnapshot, InventoryItemCount, InventoryState, InventoryWatch, ObserverClient,
+    ObserverError, ObserverSubscription, PlayerCapability, PlayerState, PlayerWatch,
+    ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason, ServiceCursor,
+    ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector, SubscriptionEnd,
+    SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess, TargetStatus, TopicRef,
+    TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe, WarframeChatEvent,
+    WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession, connect, connect_local,
 };
 pub use n0_future::{Stream, StreamExt, TryStreamExt};
 

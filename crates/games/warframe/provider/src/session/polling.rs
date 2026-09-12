@@ -12,13 +12,15 @@ use provider_sdk::{
     ProviderSession, UnavailableReason, memory::TargetReader,
 };
 use std::time::Duration;
-use warframe_model::{CurrencySnapshot, InventorySnapshot};
+use warframe_model::{ChatEvent, CurrencySnapshot, InventorySnapshot, PlayerSnapshot};
 
 #[cfg(test)]
 #[path = "acquisition_tests.rs"]
 mod acquisition_tests;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+const CHAT_INTERVAL: Duration = Duration::from_millis(250);
+const CHAT_BACKLOG_INTERVAL: Duration = Duration::from_millis(25);
 
 pub(crate) static INVENTORY: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.inventory",
@@ -34,6 +36,20 @@ pub(crate) static CURRENCIES: CapabilityDescriptor = CapabilityDescriptor {
     events: false,
 };
 
+pub(crate) static PLAYER: CapabilityDescriptor = CapabilityDescriptor {
+    topic: "warframe.player",
+    schema_version: 1,
+    snapshots: true,
+    events: false,
+};
+
+pub(crate) static CHAT: CapabilityDescriptor = CapabilityDescriptor {
+    topic: "warframe.chat",
+    schema_version: 1,
+    snapshots: false,
+    events: true,
+};
+
 #[derive(Default)]
 pub(crate) struct WarframeSession {
     executable: CachedCheck<Executable>,
@@ -43,9 +59,14 @@ pub(crate) struct WarframeSession {
     item_layout: CachedCheck,
     inventory: TopicState,
     currencies: TopicState,
+    player: TopicState,
+    chat: TopicState,
     login: Option<LoginIdentity>,
     items: ItemTypeCache,
     strings: StringTokenCache,
+    chat_history: Option<topics::ChatHistory>,
+    chat_cursor: topics::ChatCursor,
+    pending_chat: Option<(Option<topics::ChatHistory>, topics::ChatCursor)>,
 }
 
 /// Demand controls acquisition, not the lifetime of a successful layout check.
@@ -71,9 +92,25 @@ impl TopicState {
 
 impl ProviderSession for WarframeSession {
     fn begin_generation(&mut self, cap: &CapabilityDescriptor) {
+        if cap.topic == CHAT.topic {
+            self.clear_chat();
+        }
         for (own, topic) in self.account_topics() {
             if own.topic == cap.topic {
                 topic.next_poll = Duration::ZERO;
+            }
+        }
+    }
+
+    fn poll_completed(&mut self, committed: bool) {
+        if let Some((history, cursor)) = self.pending_chat.take() {
+            if committed {
+                if let Some(history) = history {
+                    self.chat_history = Some(history);
+                }
+                self.chat_cursor = cursor;
+            } else {
+                self.chat.next_poll = Duration::ZERO;
             }
         }
     }
@@ -88,6 +125,9 @@ impl ProviderSession for WarframeSession {
                 wanted.topic == cap.topic && wanted.schema_version == cap.schema_version
             });
             topic.demand(demanded, context.now);
+        }
+        if !self.chat.demanded {
+            self.clear_chat();
         }
         if !self
             .account_topics()
@@ -137,10 +177,12 @@ impl ProviderSession for WarframeSession {
 
 impl WarframeSession {
     /// These topics share login ownership, but have independent layouts and deadlines.
-    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 2] {
+    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 4] {
         [
             (&INVENTORY, &mut self.inventory),
             (&CURRENCIES, &mut self.currencies),
+            (&PLAYER, &mut self.player),
+            (&CHAT, &mut self.chat),
         ]
     }
 
@@ -199,6 +241,20 @@ impl WarframeSession {
             topics::read_currencies(context.memory, image.base, image.actual.image_size, &before)
                 .map_err(|error| read_retry(&error, context.now, CURRENCIES.topic))
         });
+        let player = self.player.due(context.now).then(|| {
+            topics::read_player(context.memory, image.base, image.actual.image_size, &before)
+                .map_err(|error| read_retry(&error, context.now, PLAYER.topic))
+        });
+        let chat = self.chat.due(context.now).then(|| {
+            topics::read_chat(
+                context.memory,
+                image.base,
+                image.actual.image_size,
+                &before,
+                self.chat_history.as_ref(),
+            )
+            .map_err(|error| read_retry(&error, context.now, CHAT.topic))
+        });
         // Even a failed acquisition must not retain a previous account's data.
         // Results stay local until all account-scoped reads have completed.
         let after = roots::resolve_login(context.memory, image.base, image.actual.image_size);
@@ -215,7 +271,34 @@ impl WarframeSession {
                 },
             );
         }
-        self.publish(context, inventory, currencies)?;
+        self.publish(context, inventory, currencies, player)?;
+        match chat {
+            Some(Ok(history)) => {
+                let current = history
+                    .as_ref()
+                    .or(self.chat_history.as_ref())
+                    .ok_or_else(|| ProviderError::Failed("chat baseline missing".into()))?;
+                let (cursor, updates, more) = self.chat_cursor.prepare(current);
+                // Stage the next position before any sink operation can fail.
+                self.pending_chat = Some((history, cursor));
+                context.health.update(&CHAT, CapabilityHealth::Available)?;
+                for update in updates {
+                    let payload = serde_json::to_value(ChatEvent {
+                        account_id: before.account_id.clone(),
+                        update,
+                    })
+                    .map_err(|error| ProviderError::Failed(error.to_string()))?;
+                    context.events.event(&CHAT, &payload)?;
+                }
+                self.chat.next_poll = context.now.saturating_add(if more {
+                    CHAT_BACKLOG_INTERVAL
+                } else {
+                    CHAT_INTERVAL
+                });
+            }
+            Some(Err(retry)) => unavailable(context, &CHAT, &mut self.chat, retry)?,
+            None => {}
+        }
         Ok(())
     }
 
@@ -225,9 +308,11 @@ impl WarframeSession {
         context: &mut PollContext<'_>,
         inventory: Option<Result<InventorySnapshot, Retry>>,
         currencies: Option<Result<CurrencySnapshot, Retry>>,
+        player: Option<Result<PlayerSnapshot, Retry>>,
     ) -> Result<(), ProviderError> {
         snapshot(context, &INVENTORY, &mut self.inventory, inventory)?;
-        snapshot(context, &CURRENCIES, &mut self.currencies, currencies)
+        snapshot(context, &CURRENCIES, &mut self.currencies, currencies)?;
+        snapshot(context, &PLAYER, &mut self.player, player)
     }
 
     fn sample_inventory(
@@ -292,6 +377,22 @@ impl WarframeSession {
                 unavailable(context, &CURRENCIES, &mut self.currencies, retry)?;
             }
         }
+        if self.player.due(context.now) {
+            let ready = self.player.layout.validate(context.now, PLAYER.topic, || {
+                topics::validate_player_layout(context.memory, image.base, image.actual.image_size)
+            });
+            if let Err(retry) = ready {
+                unavailable(context, &PLAYER, &mut self.player, retry)?;
+            }
+        }
+        if self.chat.due(context.now) {
+            let ready = self.chat.layout.validate(context.now, CHAT.topic, || {
+                topics::validate_chat_layout(context.memory, image.base, image.actual.image_size)
+            });
+            if let Err(retry) = ready {
+                unavailable(context, &CHAT, &mut self.chat, retry)?;
+            }
+        }
         Ok(())
     }
 
@@ -325,6 +426,7 @@ impl WarframeSession {
         events: &mut dyn provider_sdk::EventSink,
         now: Duration,
     ) -> Result<(), ProviderError> {
+        self.clear_chat();
         for (cap, topic) in self.account_topics() {
             if topic.demanded {
                 events.reset(cap)?;
@@ -332,6 +434,12 @@ impl WarframeSession {
             }
         }
         Ok(())
+    }
+
+    fn clear_chat(&mut self) {
+        self.chat_history = None;
+        self.chat_cursor = topics::ChatCursor::default();
+        self.pending_chat = None;
     }
 
     fn account_unavailable(
@@ -463,7 +571,7 @@ mod tests {
                 ..crate::target::BUILD
             },
         };
-        for failed in 0..5 {
+        for failed in 0..7 {
             let mut session = WarframeSession {
                 executable: CachedCheck::Passed(image),
                 login_layout: CachedCheck::Passed(()),
@@ -475,7 +583,11 @@ mod tests {
             let cap = if failed >= 4 {
                 session.string_layout = CachedCheck::Unchecked;
                 session.item_layout = CachedCheck::Unchecked;
-                &CURRENCIES
+                match failed {
+                    4 => &CURRENCIES,
+                    5 => &PLAYER,
+                    _ => &CHAT,
+                }
             } else {
                 &INVENTORY
             };
@@ -484,6 +596,8 @@ mod tests {
                 1 => &mut session.string_layout,
                 2 => &mut session.item_layout,
                 4 => &mut session.currencies.layout,
+                5 => &mut session.player.layout,
+                6 => &mut session.chat.layout,
                 _ => &mut session.inventory.layout,
             };
             *check = CachedCheck::Failed(Retry {
@@ -560,9 +674,19 @@ mod tests {
         session.reset_account(&mut events, now)?;
         assert_eq!(
             events.resets,
-            [INVENTORY.topic, CURRENCIES.topic, CURRENCIES.topic,]
+            [
+                INVENTORY.topic,
+                CURRENCIES.topic,
+                PLAYER.topic,
+                CHAT.topic,
+                CURRENCIES.topic,
+                PLAYER.topic,
+                CHAT.topic
+            ]
         );
         session.currencies.demand(false, now);
+        session.player.demand(false, now);
+        session.chat.demand(false, now);
         assert_eq!(session.schedule(now), PollResult::Idle);
         Ok(())
     }
@@ -579,7 +703,7 @@ mod tests {
             reason: UnavailableReason::UnsupportedBuild,
             at: Duration::from_secs(5),
         };
-        for blocked in 0..4 {
+        for blocked in 0..6 {
             let mut session = WarframeSession {
                 string_layout: CachedCheck::Passed(()),
                 item_layout: CachedCheck::Passed(()),
@@ -593,13 +717,15 @@ mod tests {
                 0 => &mut session.string_layout,
                 1 => &mut session.item_layout,
                 2 => &mut session.inventory.layout,
-                _ => &mut session.currencies.layout,
+                3 => &mut session.currencies.layout,
+                4 => &mut session.player.layout,
+                _ => &mut session.chat.layout,
             };
             *check = CachedCheck::Failed(failed.clone());
             let mut events = Sink::default();
             let mut health = Sink::default();
             let mut context = PollContext {
-                demand: &[&INVENTORY, &CURRENCIES],
+                demand: &[&INVENTORY, &CURRENCIES, &PLAYER, &CHAT],
                 now: Duration::ZERO,
                 memory: &mut NoReads,
                 events: &mut events,
@@ -608,12 +734,26 @@ mod tests {
             session.validate_due(&mut context, image)?;
             assert_eq!(session.inventory.due(context.now), blocked >= 3);
             assert_eq!(session.currencies.due(context.now), blocked != 3);
+            assert_eq!(session.player.due(context.now), blocked != 4);
+            assert_eq!(session.chat.due(context.now), blocked != 5);
             // Wake/recheck must retain the failed topic's own backoff.
             context.now = Duration::from_secs(1);
             session.reset_account(context.events, context.now)?;
             session.validate_due(&mut context, image)?;
             assert_eq!(session.inventory.due(context.now), blocked >= 3);
             assert_eq!(session.currencies.due(context.now), blocked != 3);
+            assert_eq!(session.player.due(context.now), blocked != 4);
+            assert_eq!(session.chat.due(context.now), blocked != 5);
+            if blocked >= 4 {
+                let broken = if blocked == 4 {
+                    PLAYER.topic
+                } else {
+                    CHAT.topic
+                };
+                assert!(health.health.iter().all(|(topic, _)| *topic == broken));
+                continue;
+            }
+
             let account_id = AccountId::new("0123456789abcdef01234567")?;
             let inventory = empty_inventory(account_id.clone())?;
             let currencies = CurrencySnapshot {
@@ -637,6 +777,7 @@ mod tests {
                 } else {
                     Ok(currencies)
                 }),
+                None,
             )?;
             let (healthy, broken) = if blocked == 3 {
                 (&INVENTORY, &CURRENCIES)

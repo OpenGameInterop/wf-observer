@@ -1,0 +1,17 @@
+[package]
+name = "provider-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+memory-reader = { path = "../memory-reader" }
+
+serde_json = { workspace = true }
+
+derive_aliases = { workspace = true }
+derive_more = { workspace = true, features = ["display", "error", "from"] }
+displaydoc = { workspace = true }
+
+[lints]
+workspace = true

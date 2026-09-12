@@ -1,0 +1,46 @@
+[package]
+name = "wf_observer_sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+boltffi = { workspace = true }
+derive_aliases = { workspace = true }
+protocol = { path = "../protocol" }
+warframe-model = { path = "../games/warframe/model" }
+
+iroh = { workspace = true }
+irpc = { workspace = true }
+irpc-iroh = { workspace = true }
+iroh-tickets = { workspace = true }
+
+tokio = { workspace = true, features = ["sync", "macros"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+postcard = { workspace = true }
+
+anyhow = { workspace = true }
+derive_more = { workspace = true, features = ["error"] }
+displaydoc = { workspace = true }
+tokio-util = { workspace = true, features = ["rt"] }
+parking_lot = { workspace = true }
+n0-future = { workspace = true }
+
+[target.wasm32-unknown-unknown.dependencies]
+getrandom = { workspace = true, features = ["wasm_js"] }
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+directories = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "time"] }
+
+[dev-dependencies]
+pollster = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[lints]
+workspace = true

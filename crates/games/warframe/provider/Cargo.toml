@@ -1,0 +1,24 @@
+[package]
+name = "provider-warframe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+memory-reader = { path = "../../../memory-reader" }
+provider-sdk = { path = "../../../provider-sdk" }
+warframe-model = { path = "../model" }
+
+serde = { workspace = true }
+zeroize = { version = "1" }
+
+tracing = { workspace = true }
+
+derive_aliases = { workspace = true }
+serde_json = { workspace = true }
+derive_more = { workspace = true, features = ["display", "error", "from"] }
+displaydoc = { workspace = true }
+
+
+[lints]
+workspace = true

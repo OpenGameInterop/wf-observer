@@ -1,189 +1,95 @@
-# Continuous integration
+# Development checks
 
-This document describes the CI workflows. Where applicable, each section ends
-with the equivalent command for running the check locally.
+Pull requests use [`.github/ci-paths.yml`](.github/ci-paths.yml) to select jobs in
+[CI](.github/workflows/ci.yml). The `CI / required` check passes when all selected
+jobs succeed and unselected jobs are skipped. Changes to the workflow or path
+policy select every component.
 
-Pull requests always create one stable `CI / required` check. A lightweight
-planning job classifies the changed files, runs formatting and workflow linting
-when relevant, and starts only the affected component jobs. The final check
-fails unless every selected component succeeds and every unselected component
-is skipped. Dependency groups are documented as data in
-`.github/ci-paths.yml`; changing that policy intentionally exercises every CI
-component.
+## Rust and Dioxus
 
-## Core Rust Checks
-
-Linux runs formatting, Clippy, documentation, and tests for the core workspace.
-Windows runs the platform-specific core tests without repeating the
-platform-independent lint and documentation work.
-
-Rustdoc treats broken intra-doc links as errors.
+Install [Just](https://just.systems/), then run:
 
 ```bash
-cargo fmt --all -- --check
-cargo clippy --locked --workspace --exclude example-rust-dioxus --all-targets --all-features -- -D warnings
-cargo doc --locked --workspace --exclude example-rust-dioxus --no-deps --all-features
-cargo test --locked --workspace --exclude example-rust-dioxus --all-features
-cargo clippy --locked -p example-rust-dioxus --all-targets --features dioxus/desktop -- -D warnings
-cargo build --locked -p example-rust-dioxus --features dioxus/desktop
+just check
 ```
 
-`just check` runs this complete local sequence.
+The [recipe](justfile) runs formatting, Clippy, Rustdoc, and core tests, then
+lints and builds the Dioxus desktop example. CI runs core tests on Linux and
+Windows; lint and documentation checks run on Linux.
 
-## Workflow Linting
-
-Actionlint runs inside the planning job whenever a workflow changes. A change
-to the required CI workflow selects every component so modifications to CI
-steps are exercised, not merely parsed.
-
-Requires [Actionlint](https://github.com/rhysd/actionlint) 1.7.12 locally.
+For the browser target:
 
 ```bash
-actionlint
+rustup target add wasm32-unknown-unknown
+cargo check --locked --target wasm32-unknown-unknown -p example-rust-dioxus --features dioxus/web
 ```
 
-## Language Bindings
+CI checks Dioxus for desktop on Linux and Windows and for the browser on Linux.
+It does not run Warframe. Native polling tests use synthetic memory and assume
+successful layout validation; they cover acquisition and state changes.
+Transport tests use synthetic provider publications. These tests do not establish
+compatibility with a game executable.
 
-The required CI workflow packages selected native bindings on Linux. Java,
-Gradle, .NET, Python, Binaryen, and their package/example steps are enabled
-independently from the changed paths. A Gradle-only change therefore runs only
-the JVM portion. Shared FFI, client, service, memory-reader, or binding
-configuration changes conservatively select every affected language. Swift
-runs on macOS only for shared or Swift-specific changes. Artifact uploads are
-reserved for release workflows.
+## Generated bindings
 
-`boltffi.ci.toml` limits that pull-request job to its macOS ARM64 slice; release
-packaging continues to build the complete Apple matrix from `boltffi.toml`.
-
-Generated files live under the ignored `dist/` directory.
-
-Requires [Just](https://just.systems/), [BoltFFI](https://www.boltffi.dev/)
-0.30.1, Clang, JDK 17, the .NET 10 SDK, and Python 3.10 or newer. Browser
-packaging requires Binaryen 123 or newer. Swift
-packaging additionally requires macOS and Xcode. `pack` regenerates the binding
-before building the artifact consumed by each example.
+Install [BoltFFI](https://www.boltffi.dev/) and the toolchain for each target:
 
 ```bash
 cargo install --locked --version 0.30.1 boltffi_cli
-rustup target add wasm32-unknown-unknown
-just binding csharp
-just binding java
-just binding python --python python
-just binding wasm
-# macOS only
-just binding apple
 ```
 
-The example runner packages each required binding once, starts a temporary
-service, passes its endpoint ticket to every selected example, and shuts the
-service down afterwards:
+| Target | Additional tools |
+| --- | --- |
+| Java / Kotlin | Clang and JDK 17; the example runner uses the Gradle wrapper |
+| C# | Clang and .NET 10 SDK |
+| Python | Clang and Python 3.10 or newer |
+| Swift | macOS and Xcode |
+| Browser | Node.js, TypeScript (`tsc`), and the Rust WASM target; optimized releases also need Binaryen 123 or newer |
+
+Package a target with `just binding java`, `csharp`, `python`, `apple`, or `wasm`.
+Generated files go under the ignored `dist/` directory. Check the console
+examples without starting a service:
 
 ```bash
-just example python csharp java kotlin
-# macOS only
-just example swift
+just example python csharp java kotlin --check
+# macOS only:
+just example swift --check
 ```
 
-The Dioxus showcase is linted and linked on Linux and checked on Windows only
-when the showcase or one of its workspace dependencies changes. Its
-game-dependent behaviour will remain local-only.
+This builds compiled examples and imports the Python example. It does not test
+generated clients against a running service. See the [examples](examples/README.md)
+for that manual check. CI selects language jobs by changed paths; Swift runs on
+macOS with the ARM64 overlay in [boltffi.ci.toml](boltffi.ci.toml).
 
-Android generation remains disabled until the generated JNI boundary installs
-the JVM context required by [Iroh on Android](https://docs.rs/iroh/latest/iroh/endpoint/struct.Endpoint.html#usage-on-android).
+## Workflows and links
 
-## Release bindings
-
-The Release bindings workflow runs for version tags and on manual request. It
-builds JVM bundles and Python wheels on every native host supported by BoltFFI,
-assembles one six-RID NuGet package, and packages the Apple and browser targets.
-Android remains excluded until its Iroh initialization is implemented.
-
-Python wheels cover every supported host for CPython 3.10 through 3.14. The
-workflow uploads artifacts to its Actions run; publishing them to package
-registries remains a separate release step. Final binding bundles are retained
-for seven days; intermediate C# native libraries are retained for one day.
-
-JVM artifacts are target-specific because BoltFFI 0.30.1 cannot combine
-cross-host JVM builds. The NuGet assembly job uses `boltffi.release.toml` to
-combine native libraries built by the platform matrix.
-
-The equivalent command for one local desktop target is:
+Install [Actionlint](https://github.com/rhysd/actionlint) and
+[Lychee](https://github.com/lycheeverse/lychee), then run:
 
 ```bash
-just binding java --release
-just binding python --release --python python
-just binding csharp --release
+actionlint
+just links
 ```
 
-Apple and browser packages can be built on their respective hosts with:
+CI lints changed workflows and checks links in changed files. A weekly workflow
+checks links across the repository. The workflow files pin the CI tool versions.
+
+## Profiling
+
+[Hotpath](https://hotpath.rs) profiling is opt-in:
 
 ```bash
-just binding apple --release
-just binding wasm --release
+cargo run --locked -p wf-observer-cli --features hotpath/hotpath,hotpath/hotpath-alloc,hotpath/hotpath-cpu -- start
 ```
 
-## Release CLI
+Omit `hotpath/hotpath-cpu` on Windows, where CPU sampling is unavailable.
 
-The CLI has an independent package version in
-`crates/wf-observer-cli/Cargo.toml`. The Release CLI workflow builds Linux and
-Windows x64 archives on manual runs without publishing them. Pushing a
-`cli-v{version}` tag additionally creates a GitHub Release containing both
-binary archives and `SHA256SUMS`. Stable versions also produce rendered AUR
-and Scoop metadata; tagged releases publish that metadata to the configured
-package repositories.
+## Maintenance workflows
 
-The release validator rejects a tag which does not exactly match the CLI
-package version or is not newer than every existing `cli-v*` tag. Check the
-current version locally, or dry-run a prospective tag, with:
+Pull-request jobs restore shared caches. Cache-warming workflows refresh them
+from `main`; their triggers and paths are defined in `.github/workflows/`.
+Cargo SemVer Checks is disabled for pull requests until there is a published
+crates.io version to compare against.
 
-```bash
-cargo run --locked -p xtask -- release check-cli
-version="$(cargo run --quiet --locked -p xtask -- release check-cli)"
-cargo run --locked -p xtask -- release check-cli --tag "cli-v$version"
-```
-
-See [RELEASING.md](RELEASING.md) for the complete release sequence. Binary AUR
-and Scoop publication consume these archives, while a source-based AUR package
-builds from GitHub's tag archive. Package publication is maintained separately
-from the artifact workflow.
-
-## Link checking
-
-Rust files are scanned as plain text, which catches full URLs in doc
-comments and string literals. A scheduled weekly workflow scans the entire
-repository so external link rot is still detected without blocking unrelated
-pull requests.
-
-Requires [Lychee](https://github.com/lycheeverse/lychee) to be installed
-locally.
-
-```bash
-lychee './**/*.md' './**/*.rs' './**/*.toml' './**/*.yml' './**/*.yaml' './**/*.css'
-```
-
-## Caches
-
-Pull-request jobs restore caches but do not save multi-gigabyte target caches
-under pull-request-only refs. After dependency manifests, the lockfile, or the
-toolchain change on `main`, the `Warm CI caches` workflow refreshes the shared
-Linux and Windows dependency caches and the smaller Linux/macOS BoltFFI tool
-caches.
-
-## SemVer checking
-
-Cargo SemVer Checks compares the public API against the latest published
-version on crates.io. Its pull request trigger is disabled because none of the
-workspace library crates has a published crates.io baseline. CLI GitHub
-releases do not provide that baseline.
-
-Requires [cargo-semver-checks](https://github.com/obi1kenobi/cargo-semver-checks)
-to be installed locally.
-
-```bash
-cargo semver-checks
-```
- 
-## Hotpath
-
-Hotpath is our profiling tool of choice. Profiling is not ran in CI as the workload
-is dependant on a warframe.exe process running.
+Release validation, artifact packaging, and publication are documented in
+[RELEASING.md](RELEASING.md).

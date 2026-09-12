@@ -1,14 +1,13 @@
-//! Public attachment command and background-agent launch.
+//! Public service startup and background-agent launch.
 
 use std::{path::PathBuf, process::Stdio, time::Duration};
 
 use anyhow::{Context as _, bail};
-use memory_reader::Target;
 use tokio::process::{Child, Command};
 
 use crate::{
     paths,
-    runtime::{self, AgentInfo},
+    runtime::{self, ServiceInfo},
     singleton::AgentLock,
     startup::{self, Status},
 };
@@ -17,41 +16,27 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 const FAILED_CHILD_EXIT_TIMEOUT: Duration = Duration::from_secs(2);
 const RECONCILIATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Discovers Warframe, proves access, and starts its background agent.
-pub(crate) async fn attach() -> anyhow::Result<()> {
-    let target = discover_target()?;
-    let instance = target.instance();
-
-    println!("Found {} (PID {})", target.executable(), instance.pid());
-
-    if reconcile_existing_agent(&target).await? {
+/// Starts or reuses the background service without requiring a running game.
+pub(crate) async fn start() -> anyhow::Result<()> {
+    if reconcile_existing_agent().await? {
         return Ok(());
     }
 
-    let attachment = memory_reader::attach(&target).with_context(|| {
-        format!(
-            "failed to access {} process {}",
-            target.executable(),
-            instance.pid()
-        )
-    })?;
-    drop(attachment);
-
-    launch_agent(&target).await
+    launch_agent().await
 }
 
-async fn launch_agent(target: &Target) -> anyhow::Result<()> {
+async fn launch_agent() -> anyhow::Result<()> {
     let mut retries_remaining = 1;
 
     loop {
-        match launch_agent_once(target).await {
+        match launch_agent_once().await {
             Ok(agent_pid) => {
-                println!("Agent started (PID {agent_pid})");
+                println!("Service started (PID {agent_pid})");
                 return Ok(());
             }
-            Err(error) => match competing_agent(target).await {
-                Ok(CompetingAgent::Compatible) => {
-                    report_already_attached(target);
+            Err(error) => match competing_agent().await {
+                Ok(CompetingAgent::Compatible(pid)) => {
+                    report_already_running(pid);
                     return Ok(());
                 }
                 Ok(CompetingAgent::Vacant) if retries_remaining > 0 => {
@@ -69,9 +54,8 @@ async fn launch_agent(target: &Target) -> anyhow::Result<()> {
     }
 }
 
-async fn launch_agent_once(target: &Target) -> anyhow::Result<u32> {
-    let instance = target.instance();
-    let mut child = spawn_agent(instance.pid(), instance.start_marker())?;
+async fn launch_agent_once() -> anyhow::Result<u32> {
+    let mut child = spawn_agent()?;
     let agent_pid = child
         .id()
         .context("the operating system did not report the background agent PID")?;
@@ -111,54 +95,50 @@ async fn launch_agent_once(target: &Target) -> anyhow::Result<u32> {
     }
 }
 
-async fn reconcile_existing_agent(target: &Target) -> anyhow::Result<bool> {
+async fn reconcile_existing_agent() -> anyhow::Result<bool> {
     let Some(agent) = runtime::current_agent()? else {
         return Ok(false);
     };
 
-    if is_compatible(&agent, target) {
-        report_already_attached(target);
+    if is_compatible(&agent) {
+        report_already_running(agent.pid());
         return Ok(true);
     }
 
     if agent.version() != env!("CARGO_PKG_VERSION") {
-        println!("Existing agent version: {}", agent.version());
+        println!("Existing service version: {}", agent.version());
         println!("Installed version:      {}", env!("CARGO_PKG_VERSION"));
     }
-    if !agent.is_attached_to(target.instance()) {
-        println!("Existing agent is attached to an old Warframe process.");
-    }
-
-    println!("Replacing existing agent...");
+    println!("Replacing existing service...");
     runtime::stop_agent(&agent)
         .await
         .context("failed to stop the existing background agent")?;
     Ok(false)
 }
 
-fn is_compatible(agent: &AgentInfo, target: &Target) -> bool {
-    agent.is_compatible_with(env!("CARGO_PKG_VERSION"), target.instance())
+fn is_compatible(agent: &ServiceInfo) -> bool {
+    agent.is_compatible_with(env!("CARGO_PKG_VERSION"))
 }
 
-fn report_already_attached(target: &Target) {
-    println!("Agent already attached to PID {}", target.instance().pid());
+fn report_already_running(pid: u32) {
+    println!("Service already running (PID {pid})");
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, ..Copy, ..Eq)]
 enum CompetingAgent {
-    Compatible,
+    Compatible(u32),
     Incompatible,
     Vacant,
 }
 
-async fn competing_agent(target: &Target) -> anyhow::Result<CompetingAgent> {
+async fn competing_agent() -> anyhow::Result<CompetingAgent> {
     let lock_path = paths::agent_lock_path()?;
     let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
 
     loop {
         if let Some(agent) = runtime::current_agent()? {
-            return Ok(if is_compatible(&agent, target) {
-                CompetingAgent::Compatible
+            return Ok(if is_compatible(&agent) {
+                CompetingAgent::Compatible(agent.pid())
             } else {
                 CompetingAgent::Incompatible
             });
@@ -176,35 +156,11 @@ async fn competing_agent(target: &Target) -> anyhow::Result<CompetingAgent> {
     }
 }
 
-fn discover_target() -> anyhow::Result<Target> {
-    let mut targets =
-        memory_reader::discover_targets().context("failed to discover Warframe processes")?;
-
-    match targets.len() {
-        0 => bail!("Warframe is not running"),
-        1 => targets
-            .pop()
-            .context("target discovery returned an inconsistent result"),
-        _ => {
-            let pids = targets
-                .iter()
-                .map(|target| target.instance().pid().to_string())
-                .collect::<Vec<_>>()
-                .join(", ");
-            bail!("multiple Warframe processes are running (PIDs: {pids})");
-        }
-    }
-}
-
-fn spawn_agent(pid: u32, start_marker: u64) -> anyhow::Result<Child> {
+fn spawn_agent() -> anyhow::Result<Child> {
     let executable = current_executable()?;
     let mut command = Command::new(executable);
     command
         .arg("_agent")
-        .arg("--pid")
-        .arg(pid.to_string())
-        .arg("--start-marker")
-        .arg(start_marker.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());

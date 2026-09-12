@@ -10,19 +10,27 @@ name = "wf-observer"
 path = "src/main.rs"
 doc = false
 
+[features]
+hotpath = ["hotpath/hotpath"]
+
 [dependencies]
 memory-reader = { path = "../memory-reader" }
+provider-sdk = { path = "../provider-sdk" }
+provider-warframe = { path = "../games/warframe/provider" }
 protocol = { path = "../protocol" }
-
-tokio = { workspace = true, features = ["full"] }
-iroh = { workspace = true, features = ["portmapper"] }
-iroh-tickets = { workspace = true }
-irpc = { workspace = true }
-irpc-iroh = { workspace = true }
 
 clap = { workspace = true, features = ["derive"] }
 clap-verbosity-flag = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true, features = ["rt"] }
+parking_lot = { workspace = true }
+postcard = { workspace = true }
+iroh = { workspace = true, features = ["portmapper"] }
+irpc = { workspace = true }
+irpc-iroh = { workspace = true }
+
 derive_aliases = { workspace = true }
+derive_more = { workspace = true, features = ["display", "debug"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
@@ -31,6 +39,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 directories = { workspace = true }
 tempfile = { workspace = true }
+getrandom = { workspace = true }
 
 hotpath = { workspace = true, features = ["tokio"] }
 
@@ -41,8 +50,10 @@ rustix = { workspace = true, features = ["process"] }
 windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
 
 [dev-dependencies]
-wf-observer = { path = "../wf-observer" }
-wf_observer_ffi = { path = "../wf-observer-ffi" }
+warframe-model = { path = "../games/warframe/model" }
+wf_observer_sdk = { path = "../wf-observer-sdk" }
+
+iroh-tickets = { workspace = true }
 
 [lints]
 workspace = true

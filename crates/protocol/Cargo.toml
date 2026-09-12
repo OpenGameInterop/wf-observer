@@ -5,10 +5,22 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-derive_aliases = { workspace = true }
+boltffi = { workspace = true }
 irpc = { workspace = true }
+blake3 = { workspace = true }
+
 serde = { workspace = true }
+serde_json = { workspace = true }
+json-patch = { workspace = true }
+
 tracing = { workspace = true }
+
+derive_aliases = { workspace = true }
+derive_more = { workspace = true, features = ["error"] }
+displaydoc = { workspace = true }
+
+[dev-dependencies]
+postcard = { workspace = true }
 
 [lints]
 workspace = true

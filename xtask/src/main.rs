@@ -1,9 +1,12 @@
+#[macro_use(derive)]
+extern crate derive_aliases;
+
+mod derive_alias;
+
 use std::{
-    io::{BufRead as _, BufReader},
     path::{Path, PathBuf},
-    process::{Child, ChildStdin, Command as ProcessCommand, ExitStatus, Stdio},
-    sync::mpsc::{self, Receiver, RecvTimeoutError},
-    thread::{self, JoinHandle},
+    process::{Child, Command as ProcessCommand, ExitStatus},
+    thread,
     time::Duration,
 };
 
@@ -14,10 +17,7 @@ use tempfile::TempDir;
 
 mod release;
 
-const TICKET_PREFIX: &str = "WF_OBSERVER_ENDPOINT_TICKET=";
-const START_TIMEOUT: Duration = Duration::from_secs(45);
 const EXAMPLE_TIMEOUT: Duration = Duration::from_mins(5);
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Parser)]
 #[command(version)]
@@ -28,18 +28,24 @@ struct Args {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Packages bindings and runs their console examples against a temporary service.
+    /// Packages bindings and runs their currencies examples, or checks them without a game.
     Example {
         /// Languages whose console examples should run.
         #[arg(required = true, value_enum)]
         languages: Vec<Language>,
+        /// Endpoint ID or ticket of a running service with a logged-in game.
+        #[arg(long, required_unless_present = "check", conflicts_with = "check")]
+        endpoint: Option<String>,
+        /// Builds or imports examples without connecting to a service.
+        #[arg(long)]
+        check: bool,
         /// Uses bindings already present under `dist` instead of packaging them.
         #[arg(long)]
         no_package: bool,
-        /// Python interpreter used to build and test the Python wheel.
+        /// Python interpreter used to package and run the Python example.
         #[arg(long, default_value = "python")]
         python: PathBuf,
-        /// Cargo profile used for generated native libraries and the local service.
+        /// Cargo profile used for generated native libraries.
         #[arg(long, default_value = "dev")]
         profile: String,
     },
@@ -60,7 +66,7 @@ enum ReleaseCommand {
     },
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Debug, ValueEnum, ..Copy, ..Eq)]
 enum Language {
     Python,
     Csharp,
@@ -69,7 +75,7 @@ enum Language {
     Swift,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, ..Copy, ..Eq)]
 enum BindingTarget {
     Python,
     Csharp,
@@ -115,10 +121,19 @@ fn main() -> anyhow::Result<()> {
     match args.command {
         Command::Example {
             languages,
+            endpoint,
+            check,
             no_package,
             python,
             profile,
-        } => run_examples(&languages, no_package, &python, &profile),
+        } => run_examples(
+            &languages,
+            endpoint.as_deref(),
+            check,
+            no_package,
+            &python,
+            &profile,
+        ),
         Command::Release {
             command: ReleaseCommand::CheckCli { tag },
         } => release::check_cli(workspace_root()?, tag.as_deref()),
@@ -127,6 +142,8 @@ fn main() -> anyhow::Result<()> {
 
 fn run_examples(
     languages: &[Language],
+    endpoint: Option<&str>,
+    check: bool,
     no_package: bool,
     python: &Path,
     profile: &str,
@@ -145,16 +162,9 @@ fn run_examples(
         .contains(&Language::Python)
         .then(|| prepare_python_environment(root, python))
         .transpose()?;
-    let service_binary = build_service(root, profile)?;
-    let (mut service, ticket) = RunningService::start(root, &service_binary)?;
-
-    let examples_result = languages.iter().try_for_each(|&language| {
-        run_example(root, language, &ticket, python_environment.as_ref())
-    });
-    let shutdown_result = service.shutdown();
-
-    examples_result?;
-    shutdown_result
+    languages.iter().try_for_each(|&language| {
+        run_example(root, language, endpoint, check, python_environment.as_ref())
+    })
 }
 
 fn workspace_root() -> anyhow::Result<&'static Path> {
@@ -250,68 +260,40 @@ fn prepare_python_environment(root: &Path, python: &Path) -> anyhow::Result<Pyth
     })
 }
 
-fn build_service(root: &Path, profile: &str) -> anyhow::Result<PathBuf> {
-    let mut build = ProcessCommand::new("cargo");
-    build
-        .current_dir(root)
-        .args(["build", "--locked", "--quiet", "--profile", profile])
-        .args(["-p", "wf-observer-cli"]);
-    run_command(&mut build, "build the local service")?;
-
-    let metadata = ProcessCommand::new("cargo")
-        .current_dir(root)
-        .args(["metadata", "--no-deps", "--format-version", "1"])
-        .output()
-        .context("failed to query Cargo metadata")?;
-    ensure!(
-        metadata.status.success(),
-        "Cargo metadata failed with {}: {}",
-        metadata.status,
-        String::from_utf8_lossy(&metadata.stderr)
-    );
-
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&metadata.stdout).context("Cargo returned invalid metadata")?;
-    let target_directory = metadata
-        .get("target_directory")
-        .and_then(serde_json::Value::as_str)
-        .context("Cargo metadata did not include its target directory")?;
-    let service_binary = Path::new(target_directory)
-        .join(profile_output_directory(profile))
-        .join(format!("wf-observer{}", std::env::consts::EXE_SUFFIX));
-
-    ensure!(
-        service_binary.is_file(),
-        "local service binary was not created at {}",
-        service_binary.display()
-    );
-
-    Ok(service_binary)
-}
-
-fn profile_output_directory(profile: &str) -> &str {
-    match profile {
-        "dev" => "debug",
-        profile => profile,
-    }
-}
-
 fn run_example(
     root: &Path,
     language: Language,
-    ticket: &str,
+    endpoint: Option<&str>,
+    check: bool,
     python: Option<&PythonEnvironment>,
 ) -> anyhow::Result<()> {
-    let action = format!("run the {} console example", language.display_name());
+    let operation = if check { "check" } else { "run" };
+    let action = format!(
+        "{operation} the {} console example",
+        language.display_name()
+    );
+    let endpoint = if check {
+        None
+    } else {
+        Some(endpoint.context("supply --endpoint from wf-observer status, or use --check")?)
+    };
 
     match language {
         Language::Python => {
             let python = python.context("the Python environment was not prepared")?;
             let mut command = ProcessCommand::new(&python.executable);
-            command
-                .current_dir(root)
-                .arg(root.join("examples/python/console/main.py"))
-                .arg(ticket);
+            command.current_dir(root);
+            if let Some(endpoint) = endpoint {
+                command
+                    .arg(root.join("examples/python/console/main.py"))
+                    .arg(endpoint);
+            } else {
+                // Imports the generated wheel and the example without running its main function.
+                command.args([
+                    "-c",
+                    "import runpy; runpy.run_path('examples/python/console/main.py')",
+                ]);
+            }
             run_example_command(&mut command, &action)
         }
         Language::Csharp => {
@@ -320,34 +302,46 @@ fn run_example(
             let mut command = ProcessCommand::new("dotnet");
             command
                 .current_dir(root)
-                .env("NUGET_PACKAGES", packages.path())
-                .args(["run", "--project"])
-                .arg(root.join("examples/csharp/console"))
-                .arg("--")
-                .arg(ticket);
+                .env("NUGET_PACKAGES", packages.path());
+            if let Some(endpoint) = endpoint {
+                command
+                    .args(["run", "--project"])
+                    .arg(root.join("examples/csharp/console"))
+                    .arg("--")
+                    .arg(endpoint);
+            } else {
+                command
+                    .arg("build")
+                    .arg(root.join("examples/csharp/console"));
+            }
             run_example_command(&mut command, &action)
         }
         Language::Java | Language::Kotlin => {
-            let task = match language {
-                Language::Java => ":java:console:run",
-                Language::Kotlin => ":kotlin:console:run",
-                _ => unreachable!(),
+            let project = if language == Language::Java {
+                "java"
+            } else {
+                "kotlin"
             };
+            let task = if check { "classes" } else { "run" };
             let mut command = gradle_command(root);
             command
                 .current_dir(root)
-                .args(["-p", "examples", "--no-daemon", task])
-                .arg(format!("--args={ticket}"));
+                .args(["-p", "examples", "--no-daemon"])
+                .arg(format!(":{project}:console:{task}"));
+            if let Some(endpoint) = endpoint {
+                command.arg(format!("--args={endpoint}"));
+            }
             run_example_command(&mut command, &action)
         }
         Language::Swift => {
             let mut command = ProcessCommand::new("swift");
             command
                 .current_dir(root)
-                .args(["run", "--package-path"])
-                .arg(root.join("examples/swift/console"))
-                .arg("WFObserverConsole")
-                .arg(ticket);
+                .args([if check { "build" } else { "run" }, "--package-path"])
+                .arg(root.join("examples/swift/console"));
+            if let Some(endpoint) = endpoint {
+                command.arg("WFObserverConsole").arg(endpoint);
+            }
             run_example_command(&mut command, &action)
         }
     }
@@ -389,159 +383,6 @@ fn run_example_command(command: &mut ProcessCommand, action: &str) -> anyhow::Re
 
     ensure!(status.success(), "failed to {action}: {status}");
     Ok(())
-}
-
-type ServiceOutput = Result<String, String>;
-
-struct RunningService {
-    child: Option<Child>,
-    stdin: Option<ChildStdin>,
-    reader: Option<JoinHandle<()>>,
-}
-
-impl RunningService {
-    fn start(root: &Path, binary: &Path) -> anyhow::Result<(Self, String)> {
-        let child = ProcessCommand::new(binary)
-            .current_dir(root)
-            .args(["_serve", "--print-ticket", "--shutdown-on-stdin-close"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .context("failed to start the local service")?;
-        let mut service = Self {
-            child: Some(child),
-            stdin: None,
-            reader: None,
-        };
-        let child = service
-            .child
-            .as_mut()
-            .context("local service process was not retained")?;
-        service.stdin = child.stdin.take();
-        let stdout = child
-            .stdout
-            .take()
-            .context("local service stdout was not captured")?;
-        let (sender, receiver) = mpsc::channel();
-        service.reader = Some(thread::spawn(move || {
-            for line in BufReader::new(stdout).lines() {
-                match line {
-                    Ok(line) => {
-                        if let Err(mpsc::SendError(Ok(line))) = sender.send(Ok(line)) {
-                            println!("{line}");
-                        }
-                    }
-                    Err(error) => {
-                        drop(sender.send(Err(error.to_string())));
-                        return;
-                    }
-                }
-            }
-        }));
-
-        let ticket = service.wait_for_ticket(&receiver)?;
-        Ok((service, ticket))
-    }
-
-    fn wait_for_ticket(&mut self, receiver: &Receiver<ServiceOutput>) -> anyhow::Result<String> {
-        let deadline = Instant::now() + START_TIMEOUT;
-
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                bail!("timed out waiting for the local service endpoint ticket");
-            }
-
-            match receiver.recv_timeout(remaining) {
-                Ok(Ok(line)) => {
-                    if let Some(ticket) = line.strip_prefix(TICKET_PREFIX) {
-                        ensure!(!ticket.is_empty(), "local service printed an empty ticket");
-                        return Ok(ticket.to_owned());
-                    }
-                    println!("{line}");
-                }
-                Ok(Err(error)) => bail!("failed to read local service output: {error}"),
-                Err(RecvTimeoutError::Timeout) => {
-                    bail!("timed out waiting for the local service endpoint ticket");
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    let status = self
-                        .child
-                        .as_mut()
-                        .context("local service process was not retained")?
-                        .try_wait()
-                        .context("failed to inspect the local service")?;
-
-                    if let Some(status) = status {
-                        bail!("local service exited before printing a ticket: {status}");
-                    }
-                    bail!("local service output closed before a ticket was printed");
-                }
-            }
-        }
-    }
-
-    fn shutdown(&mut self) -> anyhow::Result<()> {
-        self.stdin.take();
-        let status = wait_for_exit(
-            self.child
-                .as_mut()
-                .context("local service process was not retained")?,
-            SHUTDOWN_TIMEOUT,
-        )?;
-
-        let Some(status) = status else {
-            let child = self
-                .child
-                .as_mut()
-                .context("local service process was not retained")?;
-            child.kill().context("failed to stop the local service")?;
-            child
-                .wait()
-                .context("failed to reap the local service process")?;
-            self.child.take();
-            self.join_reader()?;
-            bail!("local service did not shut down within {SHUTDOWN_TIMEOUT:?}");
-        };
-
-        self.child.take();
-        self.join_reader()?;
-        ensure!(
-            status.success(),
-            "local service exited unsuccessfully: {status}"
-        );
-        Ok(())
-    }
-
-    fn join_reader(&mut self) -> anyhow::Result<()> {
-        if let Some(reader) = self.reader.take() {
-            reader
-                .join()
-                .map_err(|_| anyhow::anyhow!("local service output reader panicked"))?;
-        }
-        Ok(())
-    }
-}
-
-impl Drop for RunningService {
-    fn drop(&mut self) {
-        self.stdin.take();
-
-        if let Some(mut child) = self.child.take()
-            && !matches!(
-                wait_for_exit(&mut child, Duration::from_secs(1)),
-                Ok(Some(_))
-            )
-        {
-            drop(child.kill());
-            drop(child.wait());
-        }
-
-        if let Some(reader) = self.reader.take() {
-            drop(reader.join());
-        }
-    }
 }
 
 fn wait_for_exit(child: &mut Child, timeout: Duration) -> std::io::Result<Option<ExitStatus>> {

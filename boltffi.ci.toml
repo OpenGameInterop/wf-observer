@@ -10,7 +10,7 @@ macos_architectures = ["arm64"]
 # BoltFFI needs an explicit artifact path when Cargo uses a named profile.
 [targets.wasm]
 profile = "debug"
-artifact_path = "target/wasm32-unknown-unknown/ci/wf_observer_ffi.wasm"
+artifact_path = "target/wasm32-unknown-unknown/ci/wf_observer_sdk.wasm"
 
 [targets.wasm.optimize]
 enabled = false

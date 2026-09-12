@@ -4303,9 +4303,14 @@ dependencies = [
 name = "protocol"
 version = "0.1.0"
 dependencies = [
+ "boltffi",
  "derive_aliases",
+ "derive_more 2.1.1",
+ "displaydoc",
  "irpc",
+ "postcard",
  "serde",
+ "serde_json",
  "tracing",
 ]
 

@@ -11,10 +11,12 @@ use std::time::Duration;
 use tokio::time::{Instant, timeout};
 use wf_observer_sdk as sdk;
 use wf_observer_sdk::raw::{
-    Client,
+    Client, Topic,
     warframe::{
-        AccountId, CurrencyBalances, CurrencySnapshot, InventoryFamily, InventoryFamilySnapshot,
-        InventoryItemCount, InventorySnapshot, ItemKey, decode_currencies, decode_inventory,
+        AccountId, ChatChannel, ChatEvent, ChatMessage, ChatTime, ChatTopic, ChatUpdate,
+        CurrencyBalances, CurrencySnapshot, InventoryFamily, InventoryFamilySnapshot,
+        InventoryItemCount, InventorySnapshot, ItemKey, PlayerSnapshot, decode_chat,
+        decode_currencies, decode_inventory, decode_player,
     },
 };
 
@@ -78,6 +80,54 @@ impl TestWarframe {
         )
     }
 
+    fn publish_player(&self, account_id: &str, reset: bool) -> anyhow::Result<()> {
+        self.publish_payload(
+            "warframe.player",
+            Some(serde_json::to_value(PlayerSnapshot {
+                account_id: AccountId::new(account_id)?,
+                username: "ExamplePlayer".parse()?,
+            })?),
+            reset,
+        )
+    }
+
+    fn publish_chat(
+        &self,
+        account_id: &str,
+        update: Option<ChatUpdate>,
+        reset: bool,
+    ) -> anyhow::Result<()> {
+        let manifest = WarframeProvider.manifest();
+        let cap = manifest
+            .capabilities
+            .iter()
+            .find(|cap| cap.topic == ChatTopic::NAME)
+            .context("missing chat capability")?;
+        let ticket = self.state.ticket("inventory").context("missing session")?;
+        let batch = PollBatch::new(manifest);
+        if reset {
+            batch.events().reset(cap)?;
+        }
+        batch
+            .health()
+            .update(cap, provider_sdk::CapabilityHealth::Available)?;
+        if let Some(update) = update {
+            batch.events().event(
+                cap,
+                &serde_json::to_value(ChatEvent {
+                    account_id: AccountId::new(account_id)?,
+                    update,
+                })?,
+            )?;
+        }
+        assert!(self.state.commit_poll(
+            &ticket,
+            batch,
+            Instant::now() + Duration::from_secs(30)
+        )?);
+        Ok(())
+    }
+
     fn publish_payload(
         &self,
         topic: &str,
@@ -120,6 +170,17 @@ impl TestWarframe {
     }
 }
 
+fn chat_message() -> ChatUpdate {
+    ChatUpdate::Message {
+        value: ChatMessage {
+            channel: ChatChannel::Squad,
+            sender: Some("ExampleSender".into()),
+            text: "Hello <Tenno>".into(),
+            game_time: ChatTime::new(23, 59),
+        },
+    }
+}
+
 async fn next_snapshot(
     sub: &wf_observer_sdk::raw::Subscription,
 ) -> anyhow::Result<wire::DataEnvelope> {
@@ -134,6 +195,110 @@ async fn next_snapshot(
         }
     })
     .await?
+}
+
+async fn next_chat_event(
+    sub: &wf_observer_sdk::raw::Subscription,
+) -> anyhow::Result<wire::EventEnvelope> {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if let wf_observer_sdk::raw::SubscriptionItem::Event(event) =
+                sub.next().await?.context("chat stream ended")?
+            {
+                break anyhow::Ok(event.as_ref().clone());
+            }
+        }
+    })
+    .await?
+}
+
+#[tokio::test]
+async fn player_and_chat_reach_typed_clients_with_independent_health() -> anyhow::Result<()> {
+    let test = TestWarframe::start().await?;
+    let client = Client::connect(test.server.endpoint().addr()).await?;
+    let player_sub = client.subscribe_player(wire::SessionSelector::All).await?;
+    let chat_sub = client.subscribe_chat(wire::SessionSelector::All).await?;
+    test.publish_player(ACCOUNT_ID, false)?;
+    test.publish_chat(ACCOUNT_ID, None, false)?;
+    let player = decode_player(next_snapshot(&player_sub).await?)?;
+    assert_eq!(player.data.username.as_str(), "ExamplePlayer");
+    assert_eq!(
+        client
+            .player_snapshot(&player.metadata.source.session)
+            .await?
+            .data,
+        player.data
+    );
+    let decoded = sdk::WarframePlayer::from_envelope(
+        wire::DataEnvelope {
+            metadata: player.metadata.clone(),
+            payload: wire::JsonPayload::from_value(&serde_json::to_value(&player.data)?)?,
+        }
+        .into(),
+    )?;
+    assert_eq!(decoded.username, player.data.username.as_str());
+    assert_eq!(decoded.account_id, ACCOUNT_ID);
+
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if let wf_observer_sdk::raw::SubscriptionItem::State(state) =
+                chat_sub.next().await?.context("chat listener ended")?
+                && let Some(topic) = state
+                    .topics
+                    .iter()
+                    .find(|topic| topic.health == wire::CapabilityHealth::Available)
+            {
+                assert!(topic.snapshot.is_none());
+                break anyhow::Ok(());
+            }
+        }
+    })
+    .await??;
+    assert!(matches!(
+        client
+            .snapshot(&player.metadata.source.session, &ChatTopic::topic())
+            .await,
+        Err(wf_observer_sdk::raw::ClientError::Request(
+            wire::RequestError::SnapshotsUnsupported { .. }
+        ))
+    ));
+    for update in [
+        chat_message(),
+        ChatUpdate::Gap {
+            channel: ChatChannel::Squad,
+        },
+    ] {
+        test.publish_chat(ACCOUNT_ID, Some(update.clone()), false)?;
+        let event = next_chat_event(&chat_sub).await?;
+        assert_eq!(decode_chat(event.clone())?.data.update, update);
+        let concrete = sdk::WarframeChatEvent::from_envelope(event.clone().into())?;
+        assert_eq!(concrete.update, update);
+        assert_eq!(concrete.account_id, ACCOUNT_ID);
+        if matches!(update, ChatUpdate::Message { .. }) {
+            let mut bad: sdk::EventEnvelope = event.into();
+            bad.payload_json = bad.payload_json.replace("\"hour\":23", "\"hour\":24");
+            assert!(sdk::WarframeChatEvent::from_envelope(bad).is_err());
+        }
+    }
+    test.publish_payload(ChatTopic::NAME, None, false)?;
+    assert_eq!(
+        client
+            .player_snapshot(&player.metadata.source.session)
+            .await?
+            .data,
+        player.data
+    );
+    test.publish_player(OTHER_ACCOUNT_ID, true)?;
+    test.publish_chat(OTHER_ACCOUNT_ID, None, true)?;
+    let fresh = client
+        .player_snapshot(&player.metadata.source.session)
+        .await?;
+    assert_eq!(fresh.data.account_id.as_str(), OTHER_ACCOUNT_ID);
+    assert!(fresh.metadata.generation > player.metadata.generation);
+    player_sub.close();
+    chat_sub.close();
+    client.close().await;
+    test.close().await
 }
 
 fn inventory(account_id: &str, quantity: u64) -> anyhow::Result<InventorySnapshot> {
@@ -423,6 +588,61 @@ async fn typed_watch_invalidates_on_unavailability_and_reports_termination_once(
     assert!(watch.next().await?.is_none());
     assert!(watch.current().is_err());
     client.close().await;
+    test.server.shutdown().await
+}
+
+#[tokio::test]
+async fn typed_reads_and_chat_cross_the_sdk_runtime_boundary() -> anyhow::Result<()> {
+    let test = TestWarframe::start().await?;
+    let client = sdk::connect(test.ticket()).await?;
+    let game = client.warframe().single_session().await?;
+    let inventory = game.inventory();
+    assert!(inventory.cached().await?.is_none());
+    let (value, published) = tokio::join!(inventory.read(), async {
+        demand(&test, 1).await?;
+        test.publish(ACCOUNT_ID, u64::MAX, false, true)
+    });
+    published?;
+    let value = value?;
+    assert_eq!(value.account_id, ACCOUNT_ID);
+    assert!(
+        value
+            .families
+            .iter()
+            .flat_map(|family| &family.items)
+            .any(|item| item.quantity == u64::MAX)
+    );
+    demand(&test, 0).await?;
+    let chat = game.chat().watch().await?;
+    assert!(matches!(
+        chat.next().await?,
+        Some(sdk::ChatObservation::State { .. })
+    ));
+    test.publish_chat(
+        ACCOUNT_ID,
+        Some(ChatUpdate::Gap {
+            channel: ChatChannel::Trade,
+        }),
+        false,
+    )?;
+    loop {
+        if let Some(sdk::ChatObservation::Gap {
+            account_id,
+            channel,
+            ..
+        }) = timeout(Duration::from_secs(5), chat.next()).await??
+        {
+            assert_eq!(account_id, ACCOUNT_ID);
+            assert_eq!(channel, ChatChannel::Trade);
+            break;
+        }
+    }
+    chat.cancel();
+    chat.shutdown().await?;
+    assert!(chat.current().is_err());
+    assert!(chat.next().await?.is_none());
+    client.shutdown().await?;
+    test.state.shutdown();
     test.server.shutdown().await
 }
 

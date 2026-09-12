@@ -17,8 +17,12 @@
 //! [`crate::session`] coordinates acquisition and publication. Public models live
 //! in `warframe-model`, independently of this provider's memory-reading code.
 
+mod chat;
 mod currencies;
 mod inventory;
+mod player;
 
+pub(crate) use chat::{ChatCursor, History as ChatHistory, read_chat, validate_chat_layout};
 pub(crate) use currencies::{read_currencies, validate_currencies_layout};
 pub(crate) use inventory::{InventoryError, read_inventory, validate_inventory_layout};
+pub(crate) use player::{read_player, validate_player_layout};

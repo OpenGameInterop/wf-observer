@@ -7,6 +7,7 @@ mod derive_alias;
 
 mod item_type;
 mod matching;
+mod native_string;
 mod provider;
 mod roots;
 mod scalar;

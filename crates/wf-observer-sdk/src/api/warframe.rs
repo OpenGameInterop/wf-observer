@@ -103,11 +103,31 @@ impl WarframeSession {
     }
     /// Creates an inactive capability handle; retaining it does not acquire data.
     #[must_use]
+    pub fn player(&self) -> crate::api::PlayerCapability {
+        crate::api::PlayerCapability::new(
+            crate::raw::Capability::<crate::warframe::PlayerTopic>::new(
+                self.client.clone(),
+                self.info.session.clone(),
+            ),
+        )
+    }
+    /// Creates an inactive capability handle; retaining it does not acquire data.
+    #[must_use]
     pub fn inventory(&self) -> crate::api::InventoryCapability {
         crate::api::InventoryCapability::new(crate::raw::Capability::<
             crate::warframe::InventoryTopic,
         >::new(
             self.client.clone(), self.info.session.clone()
         ))
+    }
+    /// Creates an inactive capability handle; retaining it does not acquire data.
+    #[must_use]
+    pub fn chat(&self) -> crate::api::ChatCapability {
+        crate::api::ChatCapability::new(
+            crate::raw::EventCapability::<crate::warframe::ChatTopic>::new(
+                self.client.clone(),
+                self.info.session.clone(),
+            ),
+        )
     }
 }

@@ -94,6 +94,15 @@ impl WarframeSession {
     }
     /// Creates an inactive capability handle; retaining it does not acquire data.
     #[must_use]
+    pub fn currencies(&self) -> crate::api::CurrenciesCapability {
+        crate::api::CurrenciesCapability::new(crate::raw::Capability::<
+            crate::warframe::CurrenciesTopic,
+        >::new(
+            self.client.clone(), self.info.session.clone()
+        ))
+    }
+    /// Creates an inactive capability handle; retaining it does not acquire data.
+    #[must_use]
     pub fn inventory(&self) -> crate::api::InventoryCapability {
         crate::api::InventoryCapability::new(crate::raw::Capability::<
             crate::warframe::InventoryTopic,

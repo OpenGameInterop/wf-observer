@@ -12,7 +12,7 @@ use provider_sdk::{
     ProviderSession, UnavailableReason, memory::TargetReader,
 };
 use std::time::Duration;
-use warframe_model::InventorySnapshot;
+use warframe_model::{CurrencySnapshot, InventorySnapshot};
 
 #[cfg(test)]
 #[path = "acquisition_tests.rs"]
@@ -27,6 +27,13 @@ pub(crate) static INVENTORY: CapabilityDescriptor = CapabilityDescriptor {
     events: false,
 };
 
+pub(crate) static CURRENCIES: CapabilityDescriptor = CapabilityDescriptor {
+    topic: "warframe.currencies",
+    schema_version: 1,
+    snapshots: true,
+    events: false,
+};
+
 #[derive(Default)]
 pub(crate) struct WarframeSession {
     executable: CachedCheck<Executable>,
@@ -35,6 +42,7 @@ pub(crate) struct WarframeSession {
     string_layout: CachedCheck,
     item_layout: CachedCheck,
     inventory: TopicState,
+    currencies: TopicState,
     login: Option<LoginIdentity>,
     items: ItemTypeCache,
     strings: StringTokenCache,
@@ -129,8 +137,11 @@ impl ProviderSession for WarframeSession {
 
 impl WarframeSession {
     /// These topics share login ownership, but have independent layouts and deadlines.
-    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 1] {
-        [(&INVENTORY, &mut self.inventory)]
+    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 2] {
+        [
+            (&INVENTORY, &mut self.inventory),
+            (&CURRENCIES, &mut self.currencies),
+        ]
     }
 
     fn schedule(&mut self, now: Duration) -> PollResult {
@@ -184,6 +195,10 @@ impl WarframeSession {
             .inventory
             .due(context.now)
             .then(|| self.sample_inventory(context, image, &before));
+        let currencies = self.currencies.due(context.now).then(|| {
+            topics::read_currencies(context.memory, image.base, image.actual.image_size, &before)
+                .map_err(|error| read_retry(&error, context.now, CURRENCIES.topic))
+        });
         // Even a failed acquisition must not retain a previous account's data.
         // Results stay local until all account-scoped reads have completed.
         let after = roots::resolve_login(context.memory, image.base, image.actual.image_size);
@@ -200,7 +215,7 @@ impl WarframeSession {
                 },
             );
         }
-        self.publish(context, inventory)?;
+        self.publish(context, inventory, currencies)?;
         Ok(())
     }
 
@@ -209,8 +224,10 @@ impl WarframeSession {
         &mut self,
         context: &mut PollContext<'_>,
         inventory: Option<Result<InventorySnapshot, Retry>>,
+        currencies: Option<Result<CurrencySnapshot, Retry>>,
     ) -> Result<(), ProviderError> {
-        snapshot(context, &INVENTORY, &mut self.inventory, inventory)
+        snapshot(context, &INVENTORY, &mut self.inventory, inventory)?;
+        snapshot(context, &CURRENCIES, &mut self.currencies, currencies)
     }
 
     fn sample_inventory(
@@ -258,6 +275,21 @@ impl WarframeSession {
                 });
             if let Err(retry) = ready {
                 unavailable(context, &INVENTORY, &mut self.inventory, retry)?;
+            }
+        }
+        if self.currencies.due(context.now) {
+            let ready = self
+                .currencies
+                .layout
+                .validate(context.now, CURRENCIES.topic, || {
+                    topics::validate_currencies_layout(
+                        context.memory,
+                        image.base,
+                        image.actual.image_size,
+                    )
+                });
+            if let Err(retry) = ready {
+                unavailable(context, &CURRENCIES, &mut self.currencies, retry)?;
             }
         }
         Ok(())
@@ -313,6 +345,18 @@ impl WarframeSession {
             }
         }
         Ok(())
+    }
+}
+
+fn read_retry(
+    error: &provider_sdk::memory::ReadError,
+    now: Duration,
+    topic: &'static str,
+) -> Retry {
+    tracing::debug!(%error, topic, "topic acquisition unavailable");
+    Retry {
+        reason: error.into(),
+        at: now.saturating_add(SAMPLE_INTERVAL),
     }
 }
 
@@ -419,7 +463,7 @@ mod tests {
                 ..crate::target::BUILD
             },
         };
-        for failed in 0..4 {
+        for failed in 0..5 {
             let mut session = WarframeSession {
                 executable: CachedCheck::Passed(image),
                 login_layout: CachedCheck::Passed(()),
@@ -428,11 +472,18 @@ mod tests {
                 ..WarframeSession::default()
             };
             session.inventory.layout = CachedCheck::Passed(());
-            let cap = &INVENTORY;
+            let cap = if failed >= 4 {
+                session.string_layout = CachedCheck::Unchecked;
+                session.item_layout = CachedCheck::Unchecked;
+                &CURRENCIES
+            } else {
+                &INVENTORY
+            };
             let check = match failed {
                 0 => &mut session.login_layout,
                 1 => &mut session.string_layout,
                 2 => &mut session.item_layout,
+                4 => &mut session.currencies.layout,
                 _ => &mut session.inventory.layout,
             };
             *check = CachedCheck::Failed(Retry {
@@ -507,8 +558,116 @@ mod tests {
         }
         session.inventory.demand(false, now);
         session.reset_account(&mut events, now)?;
-        assert_eq!(events.resets, [INVENTORY.topic,]);
+        assert_eq!(
+            events.resets,
+            [INVENTORY.topic, CURRENCIES.topic, CURRENCIES.topic,]
+        );
+        session.currencies.demand(false, now);
         assert_eq!(session.schedule(now), PollResult::Idle);
         Ok(())
+    }
+
+    #[test]
+    fn topic_validation_and_acquisition_failures_stay_isolated()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use warframe_model::{AccountId, CurrencyBalances};
+        let image = Executable {
+            base: 0x1_4000_0000,
+            actual: crate::target::BUILD,
+        };
+        let failed = Retry {
+            reason: UnavailableReason::UnsupportedBuild,
+            at: Duration::from_secs(5),
+        };
+        for blocked in 0..4 {
+            let mut session = WarframeSession {
+                string_layout: CachedCheck::Passed(()),
+                item_layout: CachedCheck::Passed(()),
+                ..WarframeSession::default()
+            };
+            for (_, topic) in session.account_topics() {
+                topic.demand(true, Duration::ZERO);
+                topic.layout = CachedCheck::Passed(());
+            }
+            let check = match blocked {
+                0 => &mut session.string_layout,
+                1 => &mut session.item_layout,
+                2 => &mut session.inventory.layout,
+                _ => &mut session.currencies.layout,
+            };
+            *check = CachedCheck::Failed(failed.clone());
+            let mut events = Sink::default();
+            let mut health = Sink::default();
+            let mut context = PollContext {
+                demand: &[&INVENTORY, &CURRENCIES],
+                now: Duration::ZERO,
+                memory: &mut NoReads,
+                events: &mut events,
+                health: &mut health,
+            };
+            session.validate_due(&mut context, image)?;
+            assert_eq!(session.inventory.due(context.now), blocked >= 3);
+            assert_eq!(session.currencies.due(context.now), blocked != 3);
+            // Wake/recheck must retain the failed topic's own backoff.
+            context.now = Duration::from_secs(1);
+            session.reset_account(context.events, context.now)?;
+            session.validate_due(&mut context, image)?;
+            assert_eq!(session.inventory.due(context.now), blocked >= 3);
+            assert_eq!(session.currencies.due(context.now), blocked != 3);
+            let account_id = AccountId::new("0123456789abcdef01234567")?;
+            let inventory = empty_inventory(account_id.clone())?;
+            let currencies = CurrencySnapshot {
+                account_id,
+                balances: CurrencyBalances {
+                    credits: 1,
+                    endo: 2,
+                    tradable_platinum: 3,
+                    non_tradable_platinum: 0,
+                },
+            };
+            session.publish(
+                &mut context,
+                Some(if blocked == 3 {
+                    Ok(inventory)
+                } else {
+                    Err(failed.clone())
+                }),
+                Some(if blocked == 3 {
+                    Err(failed.clone())
+                } else {
+                    Ok(currencies)
+                }),
+            )?;
+            let (healthy, broken) = if blocked == 3 {
+                (&INVENTORY, &CURRENCIES)
+            } else {
+                (&CURRENCIES, &INVENTORY)
+            };
+            assert_eq!(events.snapshots.len(), 1);
+            assert_eq!(events.snapshots[0].0, healthy.topic);
+            assert!(
+                health
+                    .health
+                    .iter()
+                    .all(|(topic, _)| *topic == broken.topic)
+            );
+        }
+        Ok(())
+    }
+
+    fn empty_inventory(
+        account_id: warframe_model::AccountId,
+    ) -> Result<InventorySnapshot, warframe_model::InvalidInventory> {
+        use warframe_model::{InventoryFamily, InventoryFamilySnapshot};
+        InventorySnapshot::new(
+            account_id,
+            InventoryFamily::ALL
+                .iter()
+                .map(|&family| InventoryFamilySnapshot {
+                    family,
+                    items: vec![],
+                })
+                .collect(),
+        )
     }
 }

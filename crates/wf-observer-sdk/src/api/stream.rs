@@ -1,5 +1,5 @@
 //! Standard Rust streams over the same watches exported to other languages.
-use super::{InventoryState, InventoryWatch, ObserverError};
+use super::{CurrenciesState, CurrenciesWatch, InventoryState, InventoryWatch, ObserverError};
 
 macro_rules! impl_stream {
     ($watch:ty, $item:ty) => {
@@ -20,4 +20,5 @@ macro_rules! impl_stream {
         }
     };
 }
+impl_stream!(CurrenciesWatch, CurrenciesState);
 impl_stream!(InventoryWatch, InventoryState);

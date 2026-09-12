@@ -17,6 +17,8 @@
 //! [`crate::session`] coordinates acquisition and publication. Public models live
 //! in `warframe-model`, independently of this provider's memory-reading code.
 
+mod currencies;
 mod inventory;
 
+pub(crate) use currencies::{read_currencies, validate_currencies_layout};
 pub(crate) use inventory::{InventoryError, read_inventory, validate_inventory_layout};

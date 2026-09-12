@@ -5,7 +5,7 @@ use provider_sdk::{GameDescriptor, Provider, ProviderError, ProviderManifest, Pr
 
 use crate::{
     matching,
-    session::{INVENTORY, WarframeSession},
+    session::{CURRENCIES, INVENTORY, WarframeSession},
 };
 
 static MANIFEST: ProviderManifest = ProviderManifest {
@@ -16,7 +16,7 @@ static MANIFEST: ProviderManifest = ProviderManifest {
         id: "warframe",
         name: "Warframe",
     },
-    capabilities: &[INVENTORY],
+    capabilities: &[INVENTORY, CURRENCIES],
 };
 
 /// Built-in Warframe identification and validated account data acquisition.

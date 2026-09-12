@@ -6275,19 +6275,8 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "wf_observer_ffi"
-version = "0.1.0"
-dependencies = [
- "boltffi",
- "iroh-tickets",
- "pollster",
- "tokio",
- "tokio-util",
  "wf_observer_sdk",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6295,14 +6284,25 @@ name = "wf_observer_sdk"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "boltffi",
  "derive_aliases",
+ "derive_more 2.1.1",
+ "directories",
+ "displaydoc",
  "getrandom 0.4.3",
- "hotpath",
  "iroh",
+ "iroh-tickets",
  "irpc",
  "irpc-iroh",
+ "n0-future",
+ "parking_lot 0.12.5",
+ "pollster",
+ "postcard",
  "protocol",
  "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -50,6 +50,7 @@ rustix = { workspace = true, features = ["process"] }
 windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
 
 [dev-dependencies]
+wf_observer_sdk = { path = "../wf-observer-sdk" }
 
 iroh-tickets = { workspace = true }
 

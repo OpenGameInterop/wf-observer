@@ -8,3 +8,9 @@ pub(crate) use server::{Server, start};
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod client_tests;
+
+#[cfg(test)]
+mod sdk_api_tests;

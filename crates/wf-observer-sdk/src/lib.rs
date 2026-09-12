@@ -1,72 +1,42 @@
-//! WF Observer client library.
+//! Observer SDK shared by Rust and BoltFFI-generated bindings.
+//! Validated feeds share demand across independent subscriptions, reads and watches.
 
-use anyhow::Context as _;
-use iroh::{Endpoint, endpoint::presets};
-
-#[allow(
-    unused_imports,
-    reason = "derive aliases are configured before client types are added"
-)]
 #[macro_use(derive)]
 extern crate derive_aliases;
 
+mod api;
+mod capability;
+mod client;
 mod derive_alias;
+mod error;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+mod local;
+mod subscription;
+mod topic;
+mod watch;
 
-pub use iroh::{EndpointAddr, EndpointId};
+pub use api::{
+    CapabilityDescriptor, CapabilityHealth, Catalog, DataEnvelope, DiscoveryHealth,
+    EnvelopeMetadata, EventEnvelope, GameDescriptor, ObserverClient, ObserverError,
+    ObserverSubscription, ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason,
+    ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector,
+    SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess,
+    TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, connect,
+    connect_local,
+};
+pub use n0_future::{Stream, StreamExt, TryStreamExt};
 
-/// Client connection to a running WF Observer service.
-///
-/// New requests reconnect automatically after a lost transport connection.
-/// Reconnecting across service restarts requires the service to retain its Iroh
-/// endpoint identity.
-pub struct Client {
-    endpoint: Endpoint,
-    rpc: irpc::Client<protocol::v1::ObserverProtocolV1>,
-}
-
-impl Client {
-    /// Connects to a running WF Observer service.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the local Iroh endpoint cannot be bound or the
-    /// service cannot be reached using the current protocol version.
-    pub async fn connect(address: EndpointAddr) -> anyhow::Result<Self> {
-        let endpoint = Endpoint::bind(presets::N0).await?;
-        let rpc = irpc_iroh::client::<protocol::v1::ObserverProtocolV1>(
-            endpoint.clone(),
-            address,
-            protocol::v1::ALPN_V1,
-        );
-        let client = Self { endpoint, rpc };
-
-        client
-            .ping()
-            .await
-            .context("failed to connect to the WF Observer service")?;
-
-        Ok(client)
-    }
-
-    /// Verifies that the service is reachable and speaking the expected
-    /// protocol version.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the request cannot be sent or the response cannot be
-    /// read.
-    pub async fn ping(&self) -> anyhow::Result<()> {
-        let _ = self
-            .rpc
-            .rpc(protocol::v1::Ping)
-            .await
-            .context("ping request failed")?;
-
-        Ok(())
-    }
-
-    /// Gracefully closes the client's Iroh endpoint.
-    pub async fn close(&self) {
-        self.endpoint.close().await;
-    }
+/// Generic protocol and custom-topic APIs. Most applications use the concrete
+/// session and capability handles at the crate root instead.
+pub mod raw {
+    pub use crate::capability::{Capability, EventCapability};
+    pub use crate::client::Client;
+    pub use crate::error::ClientError;
+    pub use crate::subscription::{Subscription, SubscriptionItem, SubscriptionState};
+    pub use crate::topic::{
+        EventTopic, SnapshotTopic, Topic, TypedData, decode_event, decode_snapshot,
+    };
+    pub use crate::watch::{EventObservation, EventState, EventWatch, SnapshotWatch, State};
+    pub use iroh::{EndpointAddr, EndpointId};
+    pub use protocol::v1 as types;
 }

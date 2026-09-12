@@ -42,8 +42,8 @@ bindings_common:
   - "crates/wf-observer-cli/Cargo.toml"
   - "crates/wf-observer-sdk/**/*.rs"
   - "crates/wf-observer-sdk/Cargo.toml"
-  - "crates/wf-observer-ffi/**/*.rs"
-  - "crates/wf-observer-ffi/Cargo.toml"
+  - "crates/wf-observer-sdk/**/*.rs"
+  - "crates/wf-observer-sdk/Cargo.toml"
   - "xtask/**/*.rs"
   - "xtask/Cargo.toml"
 

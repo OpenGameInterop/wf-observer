@@ -34,7 +34,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf-observer-sdk") | .version')"
+          version="$(cargo metadata --locked --no-deps --format-version 1 | jq --raw-output '.packages[] | select(.name == "wf_observer_sdk") | .version')"
           boltffi_version="$(awk -F '"' '/^version = "/ { print $2; exit }' boltffi.toml)"
 
           if [[ -z "$version" || "$version" != "$boltffi_version" ]]; then
@@ -61,37 +61,37 @@ jobs:
           - id: linux-x64
             runner: ubuntu-24.04
             rust_target: x86_64-unknown-linux-gnu
-            native_library: libwf_observer_ffi.so
+            native_library: libwf_observer_sdk.so
             java: true
             python: true
           - id: linux-arm64
             runner: ubuntu-24.04-arm
             rust_target: aarch64-unknown-linux-gnu
-            native_library: libwf_observer_ffi.so
+            native_library: libwf_observer_sdk.so
             java: true
             python: true
           - id: macos-x64
             runner: macos-15-intel
             rust_target: x86_64-apple-darwin
-            native_library: libwf_observer_ffi.dylib
+            native_library: libwf_observer_sdk.dylib
             java: true
             python: true
           - id: macos-arm64
             runner: macos-15
             rust_target: aarch64-apple-darwin
-            native_library: libwf_observer_ffi.dylib
+            native_library: libwf_observer_sdk.dylib
             java: true
             python: true
           - id: windows-x64
             runner: windows-2025-vs2026
             rust_target: x86_64-pc-windows-msvc
-            native_library: wf_observer_ffi.dll
+            native_library: wf_observer_sdk.dll
             java: true
             python: true
           - id: windows-arm64
             runner: windows-11-arm
             rust_target: aarch64-pc-windows-msvc
-            native_library: wf_observer_ffi.dll
+            native_library: wf_observer_sdk.dll
             java: false
             python: false
 
@@ -261,12 +261,12 @@ jobs:
         shell: pwsh
         run: |
           $artifacts = @(
-              @{ Name = "linux-x64"; Triple = "x86_64-unknown-linux-gnu"; Library = "libwf_observer_ffi.so" },
-              @{ Name = "linux-arm64"; Triple = "aarch64-unknown-linux-gnu"; Library = "libwf_observer_ffi.so" },
-              @{ Name = "macos-x64"; Triple = "x86_64-apple-darwin"; Library = "libwf_observer_ffi.dylib" },
-              @{ Name = "macos-arm64"; Triple = "aarch64-apple-darwin"; Library = "libwf_observer_ffi.dylib" },
-              @{ Name = "windows-x64"; Triple = "x86_64-pc-windows-msvc"; Library = "wf_observer_ffi.dll" },
-              @{ Name = "windows-arm64"; Triple = "aarch64-pc-windows-msvc"; Library = "wf_observer_ffi.dll" }
+              @{ Name = "linux-x64"; Triple = "x86_64-unknown-linux-gnu"; Library = "libwf_observer_sdk.so" },
+              @{ Name = "linux-arm64"; Triple = "aarch64-unknown-linux-gnu"; Library = "libwf_observer_sdk.so" },
+              @{ Name = "macos-x64"; Triple = "x86_64-apple-darwin"; Library = "libwf_observer_sdk.dylib" },
+              @{ Name = "macos-arm64"; Triple = "aarch64-apple-darwin"; Library = "libwf_observer_sdk.dylib" },
+              @{ Name = "windows-x64"; Triple = "x86_64-pc-windows-msvc"; Library = "wf_observer_sdk.dll" },
+              @{ Name = "windows-arm64"; Triple = "aarch64-pc-windows-msvc"; Library = "wf_observer_sdk.dll" }
           )
 
           foreach ($artifact in $artifacts) {
@@ -344,6 +344,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: "24"
+
+      - name: Install TypeScript
+        run: npm install --global typescript@5.9.3
 
       - name: Install Binaryen 123
         shell: bash

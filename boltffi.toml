@@ -1,12 +1,12 @@
 [package]
 name = "wf-observer"
-crate = "wf_observer_ffi"
+crate = "wf_observer_sdk"
 version = "0.1.0"
 description = "Generated language bindings for the WF Observer client"
 license = "MIT OR Apache-2.0"
 
 [cargo]
-global_args = ["--package", "wf_observer_ffi"]
+global_args = ["--package", "wf_observer_sdk"]
 
 [targets.apple]
 enabled = true

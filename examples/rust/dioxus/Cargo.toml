@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 dioxus = { version = "0.7.10" }
-wf-observer = { path = "../../../crates/wf-observer" }
+wf_observer_sdk = { path = "../../../crates/wf-observer-sdk" }
 
 hotpath = { workspace = true }
 

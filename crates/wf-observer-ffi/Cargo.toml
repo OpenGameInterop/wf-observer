@@ -13,7 +13,7 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 [dependencies]
 boltffi = { workspace = true }
 iroh-tickets = { workspace = true }
-wf-observer = { path = "../wf-observer" }
+wf_observer_sdk = { path = "../wf-observer-sdk" }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 tokio = { workspace = true, features = ["net", "rt-multi-thread", "time"] }

@@ -5,7 +5,7 @@ members = [
     "crates/wf-observer-cli",
     "crates/memory-reader",
     "crates/protocol",
-    "crates/wf-observer",
+    "crates/wf-observer-sdk",
     "crates/wf-observer-ffi",
     "xtask",
 ]

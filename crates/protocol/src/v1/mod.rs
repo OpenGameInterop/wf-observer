@@ -1,5 +1,6 @@
 mod catalog;
 mod data;
+mod delta;
 mod error;
 mod identity;
 mod payload;
@@ -9,6 +10,7 @@ mod subscription;
 
 pub use catalog::{CapabilityDescriptor, Catalog, GameDescriptor, ProviderDescriptor};
 pub use data::{DataEnvelope, EnvelopeMetadata, EventEnvelope, TopicSnapshot};
+pub use delta::{SnapshotAck, SnapshotFrame, SnapshotPayload};
 pub use error::{RequestError, Resource};
 pub use identity::{ServiceCursor, SessionRef, TopicRef, TopicSource};
 pub use payload::JsonPayload;

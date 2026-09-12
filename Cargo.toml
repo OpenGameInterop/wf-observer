@@ -42,6 +42,8 @@ clap-verbosity-flag = { version = "3.0.4", default-features = false, features = 
 # Serialisation
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
+json-patch = { version = "4.2" }
+blake3 = { version = "1.8" }
 postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 
 # Logging / Errors
@@ -64,18 +66,16 @@ windows-sys = { version = "0.61", default-features = false }
 displaydoc = { version = "0.2" }
 derive_more = { version = "2.1" }
 derive_aliases = { version = "0.4" }
+strum = { version = "0.28" }
 
 # Performance optimizations
 parking_lot = { version = "0.12" }
+n0-future = { version = "0.3" }
 fastant = { version = "0.1" }
 hotpath = { version = "0.24" }
 
 # Some dependencies can spam this causing perf issues.
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
-
-strum = { version = "0.28" }
-
-n0-future = { version = "0.3" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -120,4 +120,3 @@ lto = "thin"
 codegen-units = 1
 strip = "debuginfo"
 panic = "unwind"
-

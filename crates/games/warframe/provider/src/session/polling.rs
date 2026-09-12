@@ -9,7 +9,7 @@ use crate::{
 use memory_reader::ProcessMemory;
 use provider_sdk::{
     CapabilityDescriptor, CapabilityHealth, PollContext, PollResult, ProviderError,
-    ProviderSession, UnavailableReason, memory::TargetReader,
+    ProviderSession, SnapshotDelivery, UnavailableReason, memory::TargetReader,
 };
 use std::time::Duration;
 use warframe_model::{ChatEvent, CurrencySnapshot, InventorySnapshot, PlayerSnapshot};
@@ -25,28 +25,28 @@ const CHAT_BACKLOG_INTERVAL: Duration = Duration::from_millis(25);
 pub(crate) static INVENTORY: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.inventory",
     schema_version: 1,
-    snapshots: true,
+    snapshots: Some(SnapshotDelivery::Delta),
     events: false,
 };
 
 pub(crate) static CURRENCIES: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.currencies",
     schema_version: 1,
-    snapshots: true,
+    snapshots: Some(SnapshotDelivery::Full),
     events: false,
 };
 
 pub(crate) static PLAYER: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.player",
     schema_version: 1,
-    snapshots: true,
+    snapshots: Some(SnapshotDelivery::Full),
     events: false,
 };
 
 pub(crate) static CHAT: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.chat",
     schema_version: 1,
-    snapshots: false,
+    snapshots: None,
     events: true,
 };
 

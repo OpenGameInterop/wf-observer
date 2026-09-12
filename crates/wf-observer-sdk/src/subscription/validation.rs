@@ -54,6 +54,9 @@ impl Validation {
                 check(self.begun() && !self.ready, "Topic outside bootstrap")?;
                 self.topic(topic, true)?;
             }
+            wire::SubscriptionItem::Snapshot(_) => {
+                return Err(ClientError::protocol("snapshot was not reconstructed"));
+            }
             wire::SubscriptionItem::Ready(cursor) => {
                 check(
                     !self.ready && self.checkpoint.as_ref() == Some(cursor),

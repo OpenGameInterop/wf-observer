@@ -126,7 +126,7 @@ impl EventSink for Events<'_> {
         value: &serde_json::Value,
     ) -> Result<(), ProviderError> {
         let key = self.0.key(cap)?;
-        if !cap.snapshots {
+        if cap.snapshots.is_none() {
             return self.0.reject();
         }
         let payload = PollBatch::payload(value)?;

@@ -45,6 +45,142 @@ fn cursor(sequence: u64) -> wire::ServiceCursor {
     }
 }
 
+async fn snapshot_bootstrap(
+    send: &mut iroh::endpoint::SendStream,
+    initial: &wire::DataEnvelope,
+) -> anyhow::Result<()> {
+    for item in [
+        wire::SubscriptionItem::Begin(cursor(initial.metadata.sequence)),
+        wire::SubscriptionItem::Session(session()),
+        wire::SubscriptionItem::Snapshot(wire::SnapshotFrame {
+            cursor: None,
+            metadata: initial.metadata.clone(),
+            payload: wire::SnapshotPayload::Full(initial.payload.clone()),
+        }),
+        wire::SubscriptionItem::Ready(cursor(initial.metadata.sequence)),
+    ] {
+        send.write_length_prefixed(Ok::<_, wire::RequestError>(item))
+            .await?;
+    }
+    Ok(())
+}
+
+fn snapshot_data(sequence: u64) -> anyhow::Result<wire::DataEnvelope> {
+    Ok(wire::DataEnvelope {
+        metadata: event(1, sequence, "")?.metadata.clone(),
+        payload: wire::JsonPayload::from_value(&serde_json::json!({
+            "quantity": sequence.to_string(), "unchanged": "x".repeat(1024),
+        }))?,
+    })
+}
+
+#[tokio::test]
+async fn snapshots_are_acknowledged_after_install_and_bad_deltas_get_a_full_bootstrap()
+-> anyhow::Result<()> {
+    use irpc::util::AsyncReadVarintExt as _;
+
+    let snapshots = (1..=3)
+        .map(snapshot_data)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let server = Endpoint::builder(presets::N0)
+        .alpns(vec![wire::ALPN_V1.to_vec()])
+        .bind()
+        .await?;
+    let endpoint = server.clone();
+    let values = snapshots.clone();
+    let (advance, mut advanced) = tokio::sync::mpsc::channel(1);
+    let worker = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+        let connection = endpoint
+            .accept()
+            .await
+            .context("missing connection")?
+            .await?;
+        let (mut send, mut recv) = connection.accept_bi().await?;
+        recv.read_length_prefixed::<wire::ObserverProtocolV1>(1024)
+            .await?;
+        send.write_length_prefixed(wire::Pong).await?;
+        send.finish()?;
+        for initial in [&values[0], &values[2]] {
+            let (mut send, mut recv) = connection.accept_bi().await?;
+            assert!(matches!(
+                recv.read_length_prefixed::<wire::ObserverProtocolV1>(1024)
+                    .await?,
+                wire::ObserverProtocolV1::Subscribe(_)
+            ));
+            snapshot_bootstrap(&mut send, initial).await?;
+            if initial.metadata.sequence == 3 {
+                advanced.recv().await.context("consumer ended early")?;
+                send.write_length_prefixed(Ok::<_, wire::RequestError>(
+                    wire::SubscriptionItem::Closed(wire::SubscriptionEnd::ServiceStopped),
+                ))
+                .await?;
+                send.finish()?;
+                break;
+            }
+            for index in 0..2 {
+                let ack = recv.read_length_prefixed::<wire::SnapshotAck>(4096).await?;
+                assert_eq!(ack.metadata, values[index].metadata);
+                assert_eq!(ack.hash, values[index].payload.hash());
+                advanced.recv().await.context("consumer ended early")?;
+                let target = &values[index + 1];
+                let mut payload = wire::SnapshotPayload::between(&values[index], target)?;
+                if index == 1
+                    && let wire::SnapshotPayload::Delta { hash, .. } = &mut payload
+                {
+                    hash[0] ^= 1;
+                }
+                send.write_length_prefixed(Ok::<_, wire::RequestError>(
+                    wire::SubscriptionItem::Snapshot(wire::SnapshotFrame {
+                        cursor: Some(cursor(target.metadata.sequence)),
+                        metadata: target.metadata.clone(),
+                        payload,
+                    }),
+                ))
+                .await?;
+            }
+            // Recovery closes this stream and starts another subscription on the same connection.
+            send.stopped().await?;
+        }
+        connection.closed().await;
+        anyhow::Ok(())
+    }));
+    let result = tokio::time::timeout(Duration::from_secs(10), async {
+        let client = crate::raw::Client::connect(server.addr()).await?;
+        let sub = client.subscribe(selection()).await?;
+        for expected in snapshots {
+            loop {
+                if let Some(SubscriptionItem::State(state)) = sub.next().await?
+                    && let Some(snapshot) = state
+                        .topics
+                        .iter()
+                        .find_map(|topic| topic.snapshot.as_ref())
+                {
+                    assert_eq!(snapshot, &expected);
+                    break;
+                }
+            }
+            advance.send(()).await?;
+        }
+        assert_eq!(
+            sub.next().await?,
+            Some(SubscriptionItem::Closed(
+                wire::SubscriptionEnd::ServiceStopped
+            ))
+        );
+        client.close().await;
+        anyhow::Ok(())
+    })
+    .await;
+    drop(advance);
+    if !matches!(&result, Ok(Ok(()))) {
+        worker.abort();
+    }
+    server.close().await;
+    let joined = tokio::time::timeout(Duration::from_secs(5), worker).await;
+    result??;
+    joined??
+}
+
 #[test]
 fn live_metadata_has_a_local_budget_independent_of_bootstrap() -> anyhow::Result<()> {
     let mut validation = Validation::new(selection());

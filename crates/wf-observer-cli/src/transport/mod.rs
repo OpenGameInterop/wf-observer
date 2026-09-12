@@ -1,6 +1,7 @@
 //! Bounded Iroh RPC transport. Only the service read/subscription view crosses here.
 
 mod connection;
+mod delivery;
 mod requests;
 mod server;
 

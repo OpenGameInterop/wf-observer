@@ -4,7 +4,11 @@ use super::{catalog, inner::Inner};
 use parking_lot::{Condvar, Mutex};
 use protocol::v1 as wire;
 use provider_sdk::ProviderManifest;
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::time::Instant;
 
 pub(crate) const POLL_GRACE: Duration = Duration::from_secs(5);
@@ -12,6 +16,7 @@ pub(crate) const POLL_GRACE: Duration = Duration::from_secs(5);
 pub(super) struct Shared {
     pub inner: Mutex<Inner>,
     pub changed: Condvar,
+    pub delta_topics: BTreeSet<wire::TopicRef>,
 }
 
 #[derive(Clone)]
@@ -54,6 +59,22 @@ impl ServiceState {
                     stopped: false,
                 }),
                 changed: Condvar::new(),
+                delta_topics: manifests
+                    .iter()
+                    .flat_map(|manifest| {
+                        manifest
+                            .capabilities
+                            .iter()
+                            .filter(|cap| {
+                                cap.snapshots == Some(provider_sdk::SnapshotDelivery::Delta)
+                            })
+                            .map(|cap| wire::TopicRef {
+                                provider_id: manifest.id.into(),
+                                topic: cap.topic.into(),
+                                schema_version: cap.schema_version,
+                            })
+                    })
+                    .collect(),
             }),
         })
     }
@@ -101,6 +122,10 @@ impl ServiceState {
 }
 
 impl ServiceView {
+    pub(crate) fn delta_topics(&self) -> &BTreeSet<wire::TopicRef> {
+        &self.shared.delta_topics
+    }
+
     pub(crate) fn message_bytes(&self) -> u32 {
         self.shared.inner.lock().message_bytes
     }

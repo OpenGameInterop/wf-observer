@@ -22,6 +22,8 @@ pub enum SubscriptionItem {
     Begin(ServiceCursor),
     Session(SessionInfo),
     Topic(TopicSnapshot),
+    /// Transport snapshot; the SDK reconstructs Topic/TopicChanged before exposing it.
+    Snapshot(super::SnapshotFrame),
     Ready(ServiceCursor),
     Update(UpdateEnvelope),
     Closed(SubscriptionEnd),

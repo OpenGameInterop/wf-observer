@@ -1,4 +1,7 @@
-use super::{listener::Listener, reader::Reader};
+use super::{
+    listener::Listener,
+    reader::{ReadError, Reader},
+};
 use crate::raw::ClientError;
 use parking_lot::Mutex;
 use protocol::v1 as wire;
@@ -115,15 +118,40 @@ impl Feed {
         &self,
         rpc: irpc::Client<wire::ObserverProtocolV1>,
     ) -> Result<wire::SubscriptionEnd, ClientError> {
+        match self.receive_once(&rpc, true).await {
+            Err(ReadError::Resync(_)) => {
+                // A failed delta never becomes visible. Discard this feed's old
+                // state and acquire a coherent full bootstrap without further deltas.
+                {
+                    let mut state = self.state.lock();
+                    state.current = Arc::default();
+                    self.publish_state(&state);
+                    state.ready = false;
+                }
+                self.receive_once(&rpc, false).await.map_err(Into::into)
+            }
+            result => result.map_err(Into::into),
+        }
+    }
+
+    async fn receive_once(
+        &self,
+        rpc: &irpc::Client<wire::ObserverProtocolV1>,
+        deltas: bool,
+    ) -> Result<wire::SubscriptionEnd, ReadError> {
         let irpc::Request::Remote(sender) = rpc.request().await.map_err(ClientError::transport)?
         else {
-            return Err(ClientError::protocol("expected a remote connection"));
+            return Err(ClientError::protocol("expected a remote connection").into());
         };
-        let (_send, recv) = sender
+        let (mut send, recv) = sender
             .write(self.selection.clone())
             .await
             .map_err(ClientError::transport)?;
-        let mut reader = Reader::new(recv, self.selection.clone());
+        if !deltas {
+            // Closing the ACK side selects full-only delivery for the new stream.
+            send.finish().map_err(ClientError::transport)?;
+        }
+        let mut reader = Reader::new(send, recv, self.selection.clone(), deltas);
         let mut sequence = 0;
         loop {
             match reader.next().await? {
@@ -138,6 +166,9 @@ impl Feed {
                         .topics
                         .insert(topic.source.session.clone(), Arc::new(topic));
                 }),
+                wire::SubscriptionItem::Snapshot(_) => {
+                    return Err(ClientError::protocol("snapshot was not reconstructed").into());
+                }
                 wire::SubscriptionItem::Ready(_) => {
                     let mut state = self.state.lock();
                     state.ready = true;
@@ -187,6 +218,7 @@ impl Feed {
                     }
                 }
             }
+            reader.acknowledge().await?;
         }
     }
 

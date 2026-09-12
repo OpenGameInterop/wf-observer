@@ -414,7 +414,7 @@ fn freshness_renewal_preserves_sequences_and_respects_operation_order() -> anyho
 fn freshness_events_require_successful_scan_heartbeats() -> anyhow::Result<()> {
     static EVENT_ONLY: provider_sdk::ProviderManifest = provider_sdk::ProviderManifest {
         capabilities: &[provider_sdk::CapabilityDescriptor {
-            snapshots: false,
+            snapshots: None,
             ..fixture::CAPS[0]
         }],
         ..fixture::MANIFEST
@@ -428,7 +428,7 @@ fn freshness_events_require_successful_scan_heartbeats() -> anyhow::Result<()> {
         let original = Instant::now() + Duration::from_secs(1);
         let later = original + Duration::from_secs(100);
         let baseline = PollBatch::new(manifest);
-        if cap.snapshots {
+        if cap.snapshots.is_some() {
             baseline.events().snapshot(cap, &serde_json::json!(7))?;
         } else {
             baseline.health().update(cap, CapabilityHealth::Available)?;

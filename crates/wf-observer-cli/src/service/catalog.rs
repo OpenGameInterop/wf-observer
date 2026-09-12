@@ -19,7 +19,9 @@ pub(super) fn catalog(manifests: &[&ProviderManifest]) -> anyhow::Result<wire::C
         let mut capabilities = Vec::new();
         for cap in manifest.capabilities {
             anyhow::ensure!(
-                identifier(cap.topic) && cap.schema_version > 0 && (cap.snapshots || cap.events),
+                identifier(cap.topic)
+                    && cap.schema_version > 0
+                    && (cap.snapshots.is_some() || cap.events),
                 "invalid capability"
             );
             anyhow::ensure!(
@@ -32,7 +34,7 @@ pub(super) fn catalog(manifests: &[&ProviderManifest]) -> anyhow::Result<wire::C
             capabilities.push(wire::CapabilityDescriptor {
                 topic: cap.topic.into(),
                 schema_version: cap.schema_version,
-                snapshots: cap.snapshots,
+                snapshots: cap.snapshots.is_some(),
                 events: cap.events,
             });
         }

@@ -11,6 +11,7 @@ mod subscriptions;
 pub(crate) use batch::PollBatch;
 pub(crate) use publication::PollTicket;
 pub(crate) use state::{POLL_GRACE, ServiceState, ServiceView};
+pub(crate) use subscriptions::Subscription;
 
 const RETAINED_SNAPSHOT_BYTES: usize = 32 * 1024 * 1024;
 

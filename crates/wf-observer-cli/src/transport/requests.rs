@@ -2,7 +2,7 @@
 //! Each stream keeps its own send handle so partial-write cancellation can reset
 //! it explicitly; no game/provider/memory object is reachable here.
 
-use anyhow::{Context as _, ensure};
+use anyhow::ensure;
 use iroh::endpoint::{RecvStream, SendStream};
 use irpc::util::{AsyncReadVarintExt as _, AsyncWriteVarintExt as _};
 use protocol::v1 as wire;
@@ -33,13 +33,15 @@ pub(super) async fn serve(
             recv.read_length_prefixed::<wire::ObserverProtocolV1>(message_bytes as usize),
         )
         .await??;
-        // All current operations are request-only; there is no upload stream.
-        let _ = recv.stop(0_u32.into());
+        if !matches!(request, wire::ObserverProtocolV1::Subscribe(_)) {
+            let _ = recv.stop(0_u32.into());
+        }
         dispatch(
             &view,
             message_bytes,
             request,
             &mut send,
+            &mut recv,
             &mut permits,
             &streams,
         )
@@ -61,6 +63,7 @@ async fn dispatch(
     message_bytes: u32,
     request: wire::ObserverProtocolV1,
     send: &mut SendStream,
+    recv: &mut RecvStream,
     permits: &mut Option<(OwnedSemaphorePermit, OwnedSemaphorePermit)>,
     streams: &Arc<Streams>,
 ) -> anyhow::Result<()> {
@@ -74,7 +77,13 @@ async fn dispatch(
             write(send, &view.snapshot(&request), message_bytes).await
         }
         wire::ObserverProtocolV1::Subscribe(request) => {
-            let (_stream, mut subscription) = match streams.open().and_then(|slot| {
+            let topics = request
+                .topics
+                .iter()
+                .filter(|topic| view.delta_topics().contains(*topic))
+                .cloned()
+                .collect();
+            let (_stream, subscription) = match streams.open().and_then(|slot| {
                 view.subscribe(request)
                     .map(|subscription| (slot, subscription))
             }) {
@@ -89,23 +98,12 @@ async fn dispatch(
                 }
             };
             drop(permits.take());
-            loop {
-                let item = tokio::select! {
-                    biased;
-                    _ = send.stopped() => return Ok(()),
-                    item = subscription.next() => item.context("subscription ended without Closed")?,
-                };
-                let terminal = matches!(item, wire::SubscriptionItem::Closed(_));
-                write(send, &Ok::<_, wire::RequestError>(item), message_bytes).await?;
-                if terminal {
-                    return Ok(());
-                }
-            }
+            super::delivery::serve(subscription, send, recv, topics, message_bytes).await
         }
     }
 }
 
-async fn write<T: Serialize>(
+pub(super) async fn write<T: Serialize>(
     send: &mut SendStream,
     value: &T,
     message_bytes: u32,

@@ -18,13 +18,13 @@ pub(crate) static CAPS: &[CapabilityDescriptor] = &[
     CapabilityDescriptor {
         topic: "fixture.count",
         schema_version: 1,
-        snapshots: true,
+        snapshots: Some(provider_sdk::SnapshotDelivery::Full),
         events: true,
     },
     CapabilityDescriptor {
         topic: "fixture.shared",
         schema_version: 1,
-        snapshots: true,
+        snapshots: Some(provider_sdk::SnapshotDelivery::Full),
         events: false,
     },
 ];

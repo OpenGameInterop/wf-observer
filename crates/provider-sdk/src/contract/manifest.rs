@@ -16,10 +16,18 @@ pub struct CapabilityDescriptor {
     pub topic: &'static str,
     /// Version of the topic's JSON schema.
     pub schema_version: u32,
-    /// Whether the provider publishes full replacement snapshots.
-    pub snapshots: bool,
+    /// Snapshot support and the host's preferred delivery representation.
+    pub snapshots: Option<SnapshotDelivery>,
     /// Whether the provider publishes transient events.
     pub events: bool,
+}
+
+/// Providers always publish complete snapshots; the host may compress their delivery.
+#[derive(Debug, ..Copy, ..Eq)]
+pub enum SnapshotDelivery {
+    Full,
+    /// Send an acknowledged JSON patch when it is smaller than the replacement.
+    Delta,
 }
 
 /// A provider's compiled identity and capabilities, available even without a game.

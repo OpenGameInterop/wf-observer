@@ -60,6 +60,8 @@ pub enum ObserverProtocolV1 {
     #[rpc(tx = oneshot::Sender<Result<DataEnvelope, RequestError>>)]
     GetSnapshot(GetSnapshot),
     /// Errors reject setup before Begin. After Begin, use a terminal Closed item.
+    /// The reverse stream accepts `SnapshotAck` frames for reconstructed snapshots;
+    /// closing it selects full-only delivery without ending the subscription.
     #[rpc(tx = mpsc::Sender<Result<SubscriptionItem, RequestError>>)]
     Subscribe(Subscribe),
 }

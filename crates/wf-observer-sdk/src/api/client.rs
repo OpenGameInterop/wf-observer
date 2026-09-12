@@ -45,6 +45,12 @@ pub async fn connect_local() -> Result<ObserverClient, ObserverError> {
 
 #[boltffi::export]
 impl ObserverClient {
+    /// Returns an inactive Warframe scope. The scope retains its connection.
+    #[must_use]
+    pub fn warframe(&self) -> crate::api::Warframe {
+        crate::api::Warframe::new(self.inner.clone())
+    }
+
     /// Verifies protocol reachability.
     ///
     /// # Errors

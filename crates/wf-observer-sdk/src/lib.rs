@@ -13,16 +13,18 @@ mod error;
 mod local;
 mod subscription;
 mod topic;
+pub mod warframe;
 mod watch;
 
 pub use api::{
     CapabilityDescriptor, CapabilityHealth, Catalog, DataEnvelope, DiscoveryHealth,
-    EnvelopeMetadata, EventEnvelope, GameDescriptor, ObserverClient, ObserverError,
-    ObserverSubscription, ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason,
-    ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector,
-    SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess,
-    TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, connect,
-    connect_local,
+    EnvelopeMetadata, EventEnvelope, GameDescriptor, InventoryCapability, InventoryFamily,
+    InventoryFamilySnapshot, InventoryItemCount, InventoryState, InventoryWatch, ObserverClient,
+    ObserverError, ObserverSubscription, ProviderDescriptor, RequestError, ResetReason, Resource,
+    ResyncReason, ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef,
+    SessionSelector, SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity,
+    TargetProcess, TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus,
+    UnavailableReason, Warframe, WarframeInventory, WarframeSession, connect, connect_local,
 };
 pub use n0_future::{Stream, StreamExt, TryStreamExt};
 
@@ -36,6 +38,7 @@ pub mod raw {
     pub use crate::topic::{
         EventTopic, SnapshotTopic, Topic, TypedData, decode_event, decode_snapshot,
     };
+    pub use crate::warframe;
     pub use crate::watch::{EventObservation, EventState, EventWatch, SnapshotWatch, State};
     pub use iroh::{EndpointAddr, EndpointId};
     pub use protocol::v1 as types;

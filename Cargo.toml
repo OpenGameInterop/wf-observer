@@ -6,6 +6,7 @@ members = [
     "crates/memory-reader",
     "crates/provider-sdk",
     "crates/games/warframe/provider",
+    "crates/games/warframe/model",
     "crates/protocol",
     "crates/wf-observer-sdk",
     "xtask",

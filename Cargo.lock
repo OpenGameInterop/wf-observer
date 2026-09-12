@@ -4434,6 +4434,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "warframe-model",
  "zeroize",
 ]
 
@@ -6081,6 +6082,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "warframe-model"
+version = "0.1.0"
+dependencies = [
+ "boltffi",
+ "derive_aliases",
+ "derive_more 2.1.1",
+ "displaydoc",
+ "serde",
+ "serde_json",
+ "strum",
+]
+
+[[package]]
 name = "warnings"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6275,6 +6289,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "warframe-model",
  "wf_observer_sdk",
  "windows-sys 0.61.2",
 ]
@@ -6303,6 +6318,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "warframe-model",
 ]
 
 [[package]]

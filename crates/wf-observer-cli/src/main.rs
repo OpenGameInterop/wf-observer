@@ -7,12 +7,19 @@ mod cli;
 mod derive_alias;
 mod identity;
 mod launch;
+mod lifecycle;
 mod paths;
 mod prelude;
+mod provider_host;
+mod providers;
 mod runtime;
+mod service;
 mod singleton;
 mod startup;
 mod transport;
+
+#[cfg(test)]
+mod test_support;
 
 use std::process::ExitCode;
 
@@ -33,14 +40,10 @@ async fn main() -> ExitCode {
         .init();
 
     let result = match args.command() {
-        cli::Command::Attach => launch::attach().await,
+        cli::Command::Start => launch::start().await,
         cli::Command::Status => runtime::print_status(),
         cli::Command::Stop => runtime::stop().await,
-        cli::Command::Serve {
-            print_ticket,
-            shutdown_on_stdin_close,
-        } => application::run(print_ticket, shutdown_on_stdin_close).await,
-        cli::Command::Agent { pid, start_marker } => agent::run(pid, start_marker).await,
+        cli::Command::Agent => agent::run().await,
     };
 
     match result {

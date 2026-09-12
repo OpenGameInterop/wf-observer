@@ -1,4 +1,4 @@
-//! Private startup handshake between `attach` and the background agent.
+//! Private startup handshake between `start` and the background service.
 
 use std::io::{self, Write as _};
 
@@ -8,7 +8,7 @@ const READY: &str = "WF_OBSERVER_AGENT_READY";
 const ERROR_PREFIX: &str = "WF_OBSERVER_AGENT_ERROR=";
 
 /// The background agent's startup result.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, ..Eq)]
 pub(crate) enum Status {
     /// Initialization completed and the agent owns the singleton lock.
     Ready,

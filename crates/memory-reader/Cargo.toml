@@ -5,10 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+derive_aliases = { workspace = true }
 memflow = { version = "0.2.4" }
 memflow-native = { version = "0.2.6" }
 
-hotpath = { workspace = true }
 derive_more = { workspace = true, features = ["error"] }
 displaydoc.workspace = true
 

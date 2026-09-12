@@ -3,7 +3,7 @@
 use derive_more::Error;
 use displaydoc::Display;
 
-/// Failure while discovering supported target processes.
+/// Failure while discovering target processes.
 #[derive(Debug, Display, Error)]
 pub enum DiscoveryError {
     /// failed to initialize native process access: {0}
@@ -19,8 +19,15 @@ pub enum AccessError {
     Discovery(DiscoveryError),
     /// target process {_0} no longer exists
     TargetNotFound(#[error(not(source))] u32),
-    /// target process {_0} changed while it was being attached
+    /// target process {_0} exited or changed identity during access
     TargetChanged(#[error(not(source))] u32),
+    /// read range starting at {address:#x} with length {length} is invalid or unavailable
+    InvalidReadRange {
+        /// Requested virtual address.
+        address: u64,
+        /// Requested byte count.
+        length: usize,
+    },
     /// failed to open target process {pid}: {source}
     Open {
         /// Target process identifier.

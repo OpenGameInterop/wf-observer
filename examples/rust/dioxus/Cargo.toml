@@ -13,6 +13,13 @@ n0-future = { workspace = true }
 
 hotpath = { workspace = true }
 
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+directories = { workspace = true }
+
+[target.wasm32-unknown-unknown.dependencies]
+web-sys = { version = "0.3", features = ["Window", "Storage"] }
+serde_json = { workspace = true }
+
 [features]
 # We dont expose Desktop/Web/Mobile features as they have not diverged yet
 # Instead prefer using https://crates.io/crates/dioxus-cli with the appropriate target

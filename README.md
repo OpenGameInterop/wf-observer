@@ -1,14 +1,8 @@
 # Warframe Observer
 
-A background service that reads Warframe memory on Linux and Windows and exposes
-inventory, currencies, player identity, and chat through a shared SDK.
+A background service that reads Warframe memory on Linux and Windows.
 
 We only read memory. We never write to it or inject code.
-
-The service defaults to local-only host only (applications running on your device)
-
-If you want to allow remote connections to connect, run:
-```wf-observer access remote```
 
 ## API
 
@@ -22,6 +16,15 @@ If you want to allow remote connections to connect, run:
 Snapshot topics support `read()` for one sample, `watch()` for updates, and
 `cached()` to inspect the service cache. Chat is an event stream with explicit
 gap notifications; it has no snapshot API.
+
+The service defaults to local-only access (applications running on your machine).
+If you want remote connections (ie an application on your phone, another device etc.)
+
+```wf-observer access remote```
+
+and approve your connection key with:
+
+``` wf-observer peers allow <endpointID>```
 
 The Rust package is `wf_observer_sdk`. [BoltFFI](https://www.boltffi.dev/)
 generates Swift, Java, C#, Python, and browser TypeScript bindings from the same

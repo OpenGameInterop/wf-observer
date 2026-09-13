@@ -29,6 +29,19 @@
 //! and include initial state. Each watch has one pending receiver. Snapshot state
 //! may coalesce; chat occurrences retain order and expose explicit gaps.
 //!
+//! Remote services require an identity approved with `wf-observer peers allow <reader-id>`:
+//! ```no_run
+//! # async fn remote() -> Result<(), wf_observer_sdk::ObserverError> {
+//! let identity = wf_observer_sdk::load_identity("my-app/reader.key".into())?;
+//! println!("Reader ID: {}", identity.endpoint_id());
+//! let client = identity.connect("SERVICE_ENDPOINT_ID".into()).await?;
+//! client.shutdown().await?;
+//! # Ok(()) }
+//! ```
+//! Store keys privately per application/profile. Browsers persist `secret_bytes()`
+//! from `create_identity()` and reload with `restore_identity()`. Unapproved readers
+//! get [`ObserverError::NotAuthorized`]; approval changes end existing watches.
+//!
 //! Session handles are pinned to a service run and session. Use `sessions()` and
 //! `session(info)` when several games are open; `single_session()` rejects ambiguity.
 //! No API automatically retargets a stale handle. [raw] supports custom
@@ -52,6 +65,7 @@ mod capability;
 mod client;
 mod derive_alias;
 mod error;
+mod identity;
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod local;
 mod subscription;
@@ -65,12 +79,13 @@ pub use api::{
     CurrenciesState, CurrenciesWatch, CurrencyBalances, DataEnvelope, DiscoveryHealth,
     EnvelopeMetadata, EventEnvelope, GameDescriptor, InventoryCapability, InventoryFamily,
     InventoryFamilySnapshot, InventoryItemCount, InventoryState, InventoryWatch, ObserverClient,
-    ObserverError, ObserverSubscription, PlayerCapability, PlayerState, PlayerWatch,
-    ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason, ServiceCursor,
-    ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector, SubscriptionEnd,
-    SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess, TargetStatus, TopicRef,
-    TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe, WarframeChatEvent,
-    WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession, connect, connect_local,
+    ObserverError, ObserverIdentity, ObserverSubscription, PlayerCapability, PlayerState,
+    PlayerWatch, ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason,
+    ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector,
+    SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess,
+    TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe,
+    WarframeChatEvent, WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession,
+    connect, connect_local, create_identity, load_identity, restore_identity,
 };
 pub use n0_future::{Stream, StreamExt, TryStreamExt};
 
@@ -80,6 +95,7 @@ pub mod raw {
     pub use crate::capability::{Capability, EventCapability};
     pub use crate::client::Client;
     pub use crate::error::ClientError;
+    pub use crate::identity::ClientIdentity;
     pub use crate::subscription::{Subscription, SubscriptionItem, SubscriptionState};
     pub use crate::topic::{
         EventTopic, SnapshotTopic, Topic, TypedData, decode_event, decode_snapshot,

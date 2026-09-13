@@ -1,5 +1,6 @@
 mod app;
 mod components;
+mod identity;
 mod panels;
 mod sdk;
 

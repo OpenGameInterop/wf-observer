@@ -21,3 +21,6 @@ mod warframe_tests;
 
 #[cfg(test)]
 mod access_tests;
+
+#[cfg(test)]
+mod authorization_tests;

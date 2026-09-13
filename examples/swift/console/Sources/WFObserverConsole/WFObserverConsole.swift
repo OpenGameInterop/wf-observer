@@ -9,7 +9,11 @@ enum WFObserverConsole {
             FileHandle.standardError.write(Data("usage: WFObserverConsole <endpoint-id-or-ticket>\n".utf8))
             exit(2)
         }
-        let client = try await WFObserver.connect(endpoint: CommandLine.arguments[1])
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".wf-observer-examples/swift.key").path
+        let identity = try WFObserver.loadIdentity(path: path)
+        print("Reader ID: \(identity.endpointId())")
+        let client = try await identity.connect(endpoint: CommandLine.arguments[1])
         do {
             let game = try await client.warframe().singleSession()
             let balances = try await game.currencies().read().balances

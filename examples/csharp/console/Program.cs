@@ -7,7 +7,11 @@ if (args.Length != 1)
     return;
 }
 
-using var client = await Wf_observer_sdk.Connect(args[0]);
+var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+    ".wf-observer-examples", "csharp.key");
+using var identity = Wf_observer_sdk.LoadIdentity(path);
+Console.WriteLine($"Reader ID: {identity.EndpointId()}");
+using var client = await identity.Connect(args[0]);
 try
 {
     using var warframe = client.Warframe();

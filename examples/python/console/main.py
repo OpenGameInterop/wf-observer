@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from pathlib import Path
 
 import wf_observer as wf
 
@@ -15,7 +16,9 @@ def arguments() -> argparse.Namespace:
 
 
 async def currencies(endpoint: str) -> None:
-    client = await wf.connect(endpoint)
+    identity = wf.load_identity(str(Path.home() / ".wf-observer-examples" / "python.key"))
+    print(f"Reader ID: {identity.endpoint_id()}", flush=True)
+    client = await identity.connect(endpoint)
     try:
         game = await client.warframe().single_session()
         balances = (await game.currencies().read()).balances

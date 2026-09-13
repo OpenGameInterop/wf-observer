@@ -8,7 +8,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tokio_util::task::TaskTracker;
 
 use super::connection::{Handler, SubscriptionLimits};
-use crate::{service::ServiceView, settings::AccessMode};
+use crate::{authorization::Policy, service::ServiceView, settings::AccessMode};
 
 const SEND_WINDOW_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -54,26 +54,23 @@ impl Server {
 pub(crate) async fn start(
     secret_key: SecretKey,
     view: ServiceView,
-    mode: AccessMode,
+    policy: Policy,
 ) -> anyhow::Result<Server> {
-    start_with_limits(secret_key, view, mode, SubscriptionLimits::default()).await
+    start_with_limits(secret_key, view, policy, SubscriptionLimits::default()).await
 }
 
 pub(super) async fn start_with_limits(
     secret_key: SecretKey,
     view: ServiceView,
-    mode: AccessMode,
+    policy: Policy,
     limits: SubscriptionLimits,
 ) -> anyhow::Result<Server> {
-    let message_bytes = view.message_bytes();
-    let transport = QuicTransportConfig::builder()
-        .max_concurrent_bidi_streams(32_u32.into())
-        .max_concurrent_uni_streams(0_u32.into())
-        .stream_receive_window(message_bytes.into())
-        .receive_window((4 * message_bytes).into())
-        .send_window(SEND_WINDOW_BYTES)
-        .build();
-    let builder = match mode {
+    let builder = endpoint_builder(policy.mode)?;
+    start_with_builder(secret_key, view, policy, limits, builder).await
+}
+
+pub(super) fn endpoint_builder(mode: AccessMode) -> anyhow::Result<iroh::endpoint::Builder> {
+    Ok(match mode {
         AccessMode::Local => Endpoint::builder(presets::Minimal)
             .clear_ip_transports()
             .bind_addr((Ipv4Addr::LOCALHOST, 0))?
@@ -84,7 +81,24 @@ pub(super) async fn start_with_limits(
             .portmapper_config(PortmapperConfig::Disabled)
             .net_report_config(NetReportConfig::minimal()),
         AccessMode::Remote => Endpoint::builder(presets::N0),
-    };
+    })
+}
+
+pub(super) async fn start_with_builder(
+    secret_key: SecretKey,
+    view: ServiceView,
+    policy: Policy,
+    limits: SubscriptionLimits,
+    builder: iroh::endpoint::Builder,
+) -> anyhow::Result<Server> {
+    let message_bytes = view.message_bytes();
+    let transport = QuicTransportConfig::builder()
+        .max_concurrent_bidi_streams(32_u32.into())
+        .max_concurrent_uni_streams(0_u32.into())
+        .stream_receive_window(message_bytes.into())
+        .receive_window((4 * message_bytes).into())
+        .send_window(SEND_WINDOW_BYTES)
+        .build();
     let endpoint = builder
         .secret_key(secret_key)
         .transport_config(transport)
@@ -92,7 +106,7 @@ pub(super) async fn start_with_limits(
         .await
         .context("failed to bind the Iroh endpoint")?;
     let requests = TaskTracker::new();
-    let handler = Handler::new(view, message_bytes, requests.clone(), limits);
+    let handler = Handler::new(view, message_bytes, requests.clone(), limits, policy);
     let router = Router::builder(endpoint)
         .accept(protocol::v1::ALPN_V1, handler)
         .spawn();

@@ -6,12 +6,13 @@ use crate::api::{
 /// An observer connection shared by Rust applications and generated bindings.
 #[derive(Clone)]
 pub struct ObserverClient {
-    inner: crate::client::Client,
+    pub(super) inner: crate::client::Client,
 }
 
 /// Connects using an Iroh endpoint ticket or stable endpoint identifier.
 ///
 /// A free function is portable across every enabled generator backend.
+/// Uses an ephemeral identity; remote readers should use `ObserverIdentity::connect`.
 ///
 /// # Errors
 ///

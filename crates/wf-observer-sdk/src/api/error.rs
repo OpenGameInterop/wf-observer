@@ -8,6 +8,10 @@ pub enum ObserverError {
     InvalidEndpoint { message: String },
     /// local observer discovery failed: {message}
     LocalDiscovery { message: String },
+    /// reader identity failed: {message}
+    Identity { message: String },
+    /// reader is not authorized; approve its endpoint ID with wf-observer peers allow
+    NotAuthorized,
     /// no matching game session is running
     NoSession,
     /// multiple game sessions are running; select one explicitly
@@ -41,6 +45,8 @@ impl From<crate::raw::ClientError> for ObserverError {
         match error {
             crate::raw::ClientError::InvalidEndpoint(message) => Self::InvalidEndpoint { message },
             crate::raw::ClientError::LocalDiscovery(message) => Self::LocalDiscovery { message },
+            crate::raw::ClientError::Identity(message) => Self::Identity { message },
+            crate::raw::ClientError::NotAuthorized => Self::NotAuthorized,
             crate::raw::ClientError::Timeout => Self::Timeout,
             crate::raw::ClientError::Ended(reason) => Self::Ended { reason },
             crate::raw::ClientError::Closed => Self::Closed,

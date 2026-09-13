@@ -8,6 +8,10 @@ pub enum ClientError {
     InvalidEndpoint(#[error(not(source))] String),
     /// local observer discovery failed: {_0}
     LocalDiscovery(#[error(not(source))] String),
+    /// reader identity failed: {_0}
+    Identity(#[error(not(source))] String),
+    /// reader is not authorized; approve its endpoint ID with wf-observer peers allow
+    NotAuthorized,
     /// observer operation timed out
     Timeout,
     /// observation ended: {_0:?}
@@ -31,13 +35,33 @@ pub enum ClientError {
 }
 
 impl ClientError {
-    pub(crate) fn transport(error: impl std::fmt::Display) -> Self {
+    pub(crate) fn transport(error: impl std::error::Error + 'static) -> Self {
+        if not_authorized(&error) {
+            return Self::NotAuthorized;
+        }
         Self::Transport(format!("{error:#}"))
     }
 
     pub(crate) fn protocol(message: &str) -> Self {
         Self::Protocol(message.into())
     }
+}
+
+fn not_authorized(error: &(dyn std::error::Error + 'static)) -> bool {
+    if let Some(iroh::endpoint::ConnectionError::ApplicationClosed(close)) =
+        error.downcast_ref::<iroh::endpoint::ConnectionError>()
+    {
+        return close.error_code.into_inner() == u64::from(protocol::v1::NOT_AUTHORIZED_CLOSE_CODE);
+    }
+    // io::Error::source skips its directly wrapped error, so inspect it too.
+    if let Some(inner) = error
+        .downcast_ref::<std::io::Error>()
+        .and_then(std::io::Error::get_ref)
+        && not_authorized(inner)
+    {
+        return true;
+    }
+    error.source().is_some_and(not_authorized)
 }
 
 impl From<serde_json::Error> for ClientError {

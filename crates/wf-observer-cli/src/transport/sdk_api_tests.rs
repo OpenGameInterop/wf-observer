@@ -16,7 +16,7 @@ impl TestClient {
         let server = start(
             iroh::SecretKey::generate(),
             state.view(),
-            crate::settings::AccessMode::Local,
+            crate::authorization::Policy::default(),
         )
         .await?;
         let ticket = iroh_tickets::endpoint::EndpointTicket::new(server.endpoint().addr());

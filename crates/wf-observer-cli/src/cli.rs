@@ -32,7 +32,26 @@ pub(crate) enum Command {
         #[arg(value_enum)]
         mode: Option<crate::settings::AccessMode>,
     },
+    /// Lists, approves, or revokes reader identities.
+    Peers {
+        #[command(subcommand)]
+        command: PeerCommand,
+    },
     /// Runs the internal background service.
     #[command(name = "_agent", hide = true)]
     Agent,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PeerCommand {
+    /// Lists the saved approvals.
+    List,
+    /// Approves a client endpoint ID; applies changes to a running service.
+    Allow {
+        endpoint_id: iroh::EndpointId,
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Revokes a client endpoint ID and disconnects current readers on restart.
+    Revoke { endpoint_id: iroh::EndpointId },
 }

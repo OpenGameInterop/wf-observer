@@ -1,6 +1,6 @@
 # Dioxus showcase
 
-Follow the [service setup](../../../README.md#run-from-source), then run from the
+Follow the [service setup](../../../README.md), then run from the
 repository root:
 
 ```bash
@@ -9,15 +9,17 @@ cargo run --locked -p example-rust-dioxus --features dioxus/desktop
 dx serve -p example-rust-dioxus --web
 ```
 
-For the desktop renderer on the service's machine, paste the **local connection
-ticket** from `wf-observer status`. The service defaults to local-only access.
-The browser renderer and clients on other devices require
-`wf-observer access remote`; use the endpoint ID in that case. Remote reader
-authorization is not yet implemented.
+On the service machine, the desktop renderer accepts the local ticket from
+`wf-observer status`. Browsers and other devices require remote access and the
+service endpoint ID. The form displays the reader ID and approval command from
+the [service setup](../../../README.md).
 
-The catalog
-and process health work without a running game; topic data requires a supported,
-logged-in game. See the [endpoint access limitation](../../../README.md).
+Desktop keys live in the `wf-observer-showcase` local configuration directory;
+browser keys use local storage for the showcase's origin. Clearing storage or
+changing browser profiles requires a new approval.
+
+Catalog and process health work without a game; topic data requires a supported,
+logged-in game.
 
 The showcase shows player identity, all four currency balances, searchable and
 paged inventory, and live chat with channel filtering and game-local timestamps.

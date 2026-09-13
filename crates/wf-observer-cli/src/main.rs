@@ -3,6 +3,7 @@ extern crate derive_aliases;
 
 mod agent;
 mod application;
+mod authorization;
 mod cli;
 mod derive_alias;
 mod identity;
@@ -46,6 +47,7 @@ async fn main() -> ExitCode {
         cli::Command::Stop => runtime::stop().await,
         cli::Command::Access { mode: Some(mode) } => launch::set_access(mode).await,
         cli::Command::Access { mode: None } => runtime::print_access(),
+        cli::Command::Peers { command } => launch::peers(command).await,
         cli::Command::Agent => agent::run().await,
     };
 

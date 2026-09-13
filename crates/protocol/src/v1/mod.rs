@@ -8,6 +8,9 @@ mod requests;
 mod status;
 mod subscription;
 
+/// QUIC application close code for an authenticated peer without reader approval.
+pub const NOT_AUTHORIZED_CLOSE_CODE: u32 = 0x5746_0001;
+
 pub use catalog::{CapabilityDescriptor, Catalog, GameDescriptor, ProviderDescriptor};
 pub use data::{DataEnvelope, EnvelopeMetadata, EventEnvelope, TopicSnapshot};
 pub use delta::{SnapshotAck, SnapshotFrame, SnapshotPayload};

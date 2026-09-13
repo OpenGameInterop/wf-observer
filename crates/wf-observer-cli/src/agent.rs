@@ -7,6 +7,7 @@ use memory_reader::ProcessInstance;
 
 use crate::{
     application::{self, RunningApplication},
+    authorization::Policy,
     lifecycle, paths,
     prelude::*,
     runtime::{self, Registration},
@@ -43,10 +44,11 @@ impl RunningAgent {
 
         let lock = AgentLock::acquire(&paths::agent_lock_path()?)?;
         let mode = settings::load()?.access;
-        let application = RunningApplication::start_with_lock(lock, mode).await?;
+        let policy = Policy::load(mode)?;
+        let application = RunningApplication::start_with_lock(lock, policy.clone()).await?;
         let registration = match Registration::publish(
             application.endpoint().id().to_string(),
-            mode,
+            &policy,
             application.local_ticket(),
         ) {
             Ok(registration) => registration,

@@ -4,7 +4,8 @@ use std::{future::Future, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 use crate::raw::{
-    ClientError, EndpointAddr, SnapshotTopic, Subscription, TypedData, decode_snapshot,
+    ClientError, ClientIdentity, EndpointAddr, SnapshotTopic, Subscription, TypedData,
+    decode_snapshot,
 };
 
 /// Connection to one observer service.
@@ -26,12 +27,24 @@ struct Connection {
 }
 
 impl Client {
-    /// Connects and verifies protocol reachability.
+    /// Connects with an ephemeral identity and verifies protocol reachability.
+    /// Use [`Self::connect_with_identity`] for remote services requiring approval.
     ///
     /// # Errors
     ///
     /// Returns an error if the endpoint cannot bind or the service cannot be reached.
     pub async fn connect(address: EndpointAddr) -> Result<Self, ClientError> {
+        Self::connect_with_identity(address, &ClientIdentity::generate()).await
+    }
+
+    /// Connects with a reusable, application-owned reader identity.
+    ///
+    /// # Errors
+    /// Returns transport, timeout, or `NotAuthorized` errors.
+    pub async fn connect_with_identity(
+        address: EndpointAddr,
+        identity: &ClientIdentity,
+    ) -> Result<Self, ClientError> {
         let builder = Endpoint::builder(presets::N0);
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let builder = if is_loopback_address(&address) {
@@ -45,7 +58,11 @@ impl Client {
                 "browser clients require remote access and a service endpoint ID".into(),
             ));
         }
-        let endpoint = builder.bind().await.map_err(ClientError::transport)?;
+        let endpoint = builder
+            .secret_key(identity.secret_key())
+            .bind()
+            .await
+            .map_err(ClientError::transport)?;
         let rpc =
             irpc_iroh::client::<wire::ObserverProtocolV1>(endpoint.clone(), address, wire::ALPN_V1);
         let client = Self {
@@ -69,13 +86,24 @@ impl Client {
     /// # Errors
     /// Returns an invalid-address, transport, or timeout error.
     pub async fn connect_endpoint(endpoint: &str) -> Result<Self, ClientError> {
+        Self::connect_endpoint_with_identity(endpoint, &ClientIdentity::generate()).await
+    }
+
+    /// Connects to an endpoint ID or ticket using a reusable reader identity.
+    ///
+    /// # Errors
+    /// Returns invalid-address, transport, timeout, or `NotAuthorized` errors.
+    pub async fn connect_endpoint_with_identity(
+        endpoint: &str,
+        identity: &ClientIdentity,
+    ) -> Result<Self, ClientError> {
         let text = endpoint.trim();
         let address = text
             .parse::<iroh_tickets::endpoint::EndpointTicket>()
             .map(|ticket| ticket.endpoint_addr().clone())
             .or_else(|_| text.parse::<crate::raw::EndpointId>().map(Into::into))
             .map_err(|error| ClientError::InvalidEndpoint(error.to_string()))?;
-        Self::connect(address).await
+        Self::connect_with_identity(address, identity).await
     }
 
     /// Sets the deadline for requests, subscription setup, and one-shot reads.

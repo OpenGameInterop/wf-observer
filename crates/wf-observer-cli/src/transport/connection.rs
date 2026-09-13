@@ -12,7 +12,7 @@ use tokio::{
 use tokio_util::task::TaskTracker;
 
 use super::requests;
-use crate::service::ServiceView;
+use crate::{authorization::Policy, service::ServiceView};
 
 const CONNECTIONS: usize = 16;
 const REQUESTS: usize = 128;
@@ -38,6 +38,7 @@ impl Default for SubscriptionLimits {
 
 #[derive(derive_more::Debug)]
 pub(super) struct Handler {
+    policy: Policy,
     #[debug(skip)]
     view: ServiceView,
     message_bytes: u32,
@@ -54,8 +55,10 @@ impl Handler {
         message_bytes: u32,
         tracked: TaskTracker,
         limits: SubscriptionLimits,
+        policy: Policy,
     ) -> Self {
         Self {
+            policy,
             view,
             message_bytes,
             connections: Semaphore::new(CONNECTIONS),
@@ -69,6 +72,15 @@ impl Handler {
 
 impl ProtocolHandler for Handler {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        // Iroh authenticates this public key in the TLS handshake. Check it
+        // before admitting any RPC or allocating application resource slots.
+        if !self.policy.permits(connection.remote_id()) {
+            connection.close(
+                wire::NOT_AUTHORIZED_CLOSE_CODE.into(),
+                b"reader not approved",
+            );
+            return Ok(());
+        }
         let Ok(_connection_slot) = self.connections.try_acquire() else {
             connection.close(REJECTED.into(), b"connection limit");
             return Ok(());

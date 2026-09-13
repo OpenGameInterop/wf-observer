@@ -8,7 +8,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::{
     client::is_loopback_address,
-    raw::{Client, ClientError},
+    raw::{Client, ClientError, ClientIdentity},
 };
 
 #[derive(serde::Deserialize)]
@@ -30,6 +30,17 @@ impl Client {
     /// Returns discovery errors if the runtime record is absent or invalid,
     /// or connection errors if the recorded service cannot be reached.
     pub async fn connect_local() -> Result<Self, ClientError> {
+        Self::connect_local_with_identity(&ClientIdentity::generate()).await
+    }
+
+    /// Discovers the local service and connects with a reusable reader identity.
+    /// Remote mode requires approval even over the local ticket.
+    ///
+    /// # Errors
+    /// Returns discovery, transport, or `NotAuthorized` errors.
+    pub async fn connect_local_with_identity(
+        identity: &ClientIdentity,
+    ) -> Result<Self, ClientError> {
         let project = directories::ProjectDirs::from("", "", "wf-observer").ok_or_else(|| {
             ClientError::LocalDiscovery("application directories are unavailable".into())
         })?;
@@ -41,7 +52,7 @@ impl Client {
                 path.display()
             ))
         })?;
-        Self::connect(local_address(&bytes)?).await
+        Self::connect_with_identity(local_address(&bytes)?, identity).await
     }
 }
 

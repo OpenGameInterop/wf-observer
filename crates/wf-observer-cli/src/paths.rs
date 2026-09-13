@@ -34,6 +34,12 @@ pub(crate) fn settings_path() -> anyhow::Result<PathBuf> {
         .join("settings.toml"))
 }
 
+pub(crate) fn allowlist_path() -> anyhow::Result<PathBuf> {
+    Ok(project_directories()?
+        .config_local_dir()
+        .join("allowlist.toml"))
+}
+
 /// Returns the transient runtime-record path for the current user.
 pub(crate) fn runtime_record_path() -> anyhow::Result<PathBuf> {
     runtime_file(RUNTIME_RECORD_FILE)

@@ -9,7 +9,7 @@ use std::{
 use anyhow::Context as _;
 use memory_reader::ProcessInstance;
 
-use crate::{paths, prelude::*, settings::AccessMode, singleton::AgentLock};
+use crate::{authorization::Policy, paths, prelude::*, singleton::AgentLock};
 
 use super::record::{HostStatus, RecordedProcess, ServiceInfo};
 
@@ -25,12 +25,12 @@ impl Registration {
     /// Atomically publishes a ready service before discovery begins.
     pub(crate) fn publish(
         endpoint_id: String,
-        access_mode: AccessMode,
+        policy: &Policy,
         local_ticket: String,
     ) -> anyhow::Result<Self> {
         let agent = ProcessInstance::for_pid(std::process::id())
             .context("failed to identify the background agent process")?;
-        let record = ServiceInfo::new(agent, endpoint_id, access_mode, local_ticket);
+        let record = ServiceInfo::new(agent, endpoint_id, policy, local_ticket);
         let path = paths::runtime_record_path()?;
         remove_optional(&paths::shutdown_request_path()?)
             .context("failed to clear the stale shutdown request")?;

@@ -45,13 +45,23 @@ fn write_access(
         },
         None => writeln!(output, "Active access: none (service not running)")?,
     }
-    if configured == AccessMode::Remote
-        || record.is_some_and(|record| record.service.access_mode != Some(AccessMode::Local))
-    {
-        writeln!(
-            output,
-            "Remote reader authorization: not implemented; readers with the endpoint ID can access exposed data"
-        )?;
+    if let Some(record) = record {
+        match (&record.service.access_mode, &record.service.reader_policy) {
+            (Some(AccessMode::Local), _) => {
+                writeln!(output, "Reader authorization: local connections only")?;
+            }
+            (Some(AccessMode::Remote), Some(policy)) if policy.mode == AccessMode::Remote => {
+                writeln!(
+                    output,
+                    "Reader authorization: allowlist enforced ({} approved peers)",
+                    policy.approved_peers.len()
+                )?;
+            }
+            _ => writeln!(
+                output,
+                "Reader authorization: unknown (run wf-observer start to replace this service)"
+            )?,
+        }
     }
     Ok(())
 }

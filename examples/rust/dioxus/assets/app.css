@@ -108,3 +108,5 @@ tbody tr:nth-child(even) { background: #17201a; }
   .card-content { padding: 1.2rem; }
   .service-bar > .actions { margin-left: 0; }
 }
+
+.approval-command { display: block; overflow-wrap: anywhere; font-size: 0.8rem; }

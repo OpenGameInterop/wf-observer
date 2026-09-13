@@ -36,6 +36,7 @@ getrandom = { workspace = true, features = ["wasm_js"] }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 directories = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt-multi-thread", "time"] }
 
 [dev-dependencies]

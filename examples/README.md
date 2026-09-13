@@ -21,8 +21,10 @@ Install the [binding prerequisites](../CI.md#generated-bindings) for the selecte
 languages. The runner packages each binding once; `--no-package` reuses packages
 under `dist/`. It leaves the service running when the examples finish.
 
-For a service on another device, enable `wf-observer access remote` on that
-device and pass its endpoint ID instead.
+Each example prints its reader ID before connecting and keeps its key under
+`~/.wf-observer-examples/<language>.key` in the user's home directory. For remote
+access, follow the [approval workflow](../README.md) using that reader ID, then
+rerun the example with the service endpoint ID.
 
 To build compiled examples and import the Python example without a service or
 game:

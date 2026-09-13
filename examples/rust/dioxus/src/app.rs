@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use std::sync::Arc;
-use wf_observer_sdk::{self as types, connect};
+use wf_observer_sdk::{self as types};
 
 use crate::{
     components::{Button, Card, Input, Notice},
@@ -17,6 +17,7 @@ const CONNECTION_HELP: &str = "Enable wf-observer access remote, then copy the e
 
 #[component]
 pub fn App() -> Element {
+    let identity = use_signal(crate::identity::load);
     let mut endpoint = use_signal(String::new);
     let mut connection = use_signal(|| None::<Connection>);
     let mut error = use_signal(|| None::<String>);
@@ -45,14 +46,25 @@ pub fn App() -> Element {
                         div { class: "topic-chips", for name in ["Player", "Currencies", "Inventory", "Chat"] { span { "{name}" } } }
                     }
                     Card { title: "Connect to your observer", subtitle: CONNECTION_HELP,
+                        if let Ok(reader) = identity() {
+                            label { r#for: "reader-id", "This app's reader ID" }
+                            input { class: "input", id: "reader-id", readonly: true, value: reader.endpoint_id() }
+                            p { class: "small muted", "For remote access, approve this ID on the service device, then connect:" }
+                            code { class: "approval-command", "wf-observer peers allow {reader.endpoint_id()}" }
+                        } else if let Err(problem) = identity() {
+                            Notice { error: true, "{problem}" }
+                        }
                         label { r#for: "endpoint", "Endpoint ID or ticket" }
                         Input { id: "endpoint", value: endpoint(), placeholder: "Paste your endpoint ID or ticket", oninput: move |event: FormEvent| endpoint.set(event.value()) }
-                        Button { disabled: connecting() || endpoint().trim().is_empty(), onclick: move |_| {
+                        Button { disabled: connecting() || endpoint().trim().is_empty() || identity().is_err(), onclick: move |_| {
                             connecting.set(true);
                             error.set(None);
                             spawn(async move {
                                 let text = endpoint().trim().to_owned();
-                                let result = request(connect(text)).await;
+                                let result = match identity() {
+                                    Ok(reader) => request(reader.connect(text)).await,
+                                    Err(problem) => Err(problem),
+                                };
                                 match result {
                                     Ok(client) => connection.set(Some(Connection(Arc::new(client)))),
                                     Err(problem) => error.set(Some(problem)),
@@ -61,7 +73,7 @@ pub fn App() -> Element {
                             });
                         }, if connecting() { "Connecting…" } else { "Connect" } }
                         if let Some(problem) = error() { Notice { error: true, "{problem}" } }
-                        p { class: "small muted", "Read-only telemetry. Remote reader authorization is not yet implemented: anyone with the endpoint ID can read exposed data while remote access is enabled." }
+                        p { class: "small muted", "This app keeps its reader identity for future connections. Remote access requires approval; local-only access works without it." }
                     }
                 }
             }

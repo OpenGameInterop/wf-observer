@@ -46,16 +46,18 @@ fn load_at(path: &Path) -> anyhow::Result<Settings> {
     }
 }
 
-fn save_at(path: &Path, settings: &Settings) -> anyhow::Result<()> {
-    let parent = path.parent().context("the settings path has no parent")?;
+pub(crate) fn save_at(path: &Path, value: &impl serde::Serialize) -> anyhow::Result<()> {
+    let parent = path
+        .parent()
+        .context("the configuration path has no parent")?;
     fs::create_dir_all(parent).with_context(|| format!("failed to create {}", parent.display()))?;
-    let text = toml::to_string_pretty(settings).context("failed to encode settings")?;
+    let text = toml::to_string_pretty(value).context("failed to encode configuration")?;
     let mut temporary = tempfile::Builder::new()
-        .prefix(".settings-")
+        .prefix(".config-")
         .tempfile_in(parent)
         .with_context(|| {
             format!(
-                "failed to create temporary settings in {}",
+                "failed to create temporary configuration in {}",
                 parent.display()
             )
         })?;

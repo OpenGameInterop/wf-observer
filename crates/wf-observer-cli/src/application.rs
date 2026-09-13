@@ -3,7 +3,7 @@
 use anyhow::Context as _;
 
 use crate::{
-    identity, providers, service::ServiceState, settings::AccessMode, singleton::AgentLock,
+    authorization::Policy, identity, providers, service::ServiceState, singleton::AgentLock,
     transport,
 };
 use tokio_util::task::AbortOnDropHandle;
@@ -18,14 +18,14 @@ pub(crate) struct RunningApplication {
 
 impl RunningApplication {
     /// Starts the local transport with ownership acquired by its caller.
-    pub(crate) async fn start_with_lock(lock: AgentLock, mode: AccessMode) -> anyhow::Result<Self> {
+    pub(crate) async fn start_with_lock(lock: AgentLock, policy: Policy) -> anyhow::Result<Self> {
         let secret_key = identity::load_or_create()?;
         let manifests: Vec<_> = providers::PROVIDERS
             .iter()
             .map(|provider| provider.manifest())
             .collect();
         let state = ServiceState::new(&manifests)?;
-        let server = transport::start(secret_key, state.view(), mode).await?;
+        let server = transport::start(secret_key, state.view(), policy).await?;
         let watched = state.clone();
         let maintenance = AbortOnDropHandle::new(tokio::spawn(async move {
             loop {

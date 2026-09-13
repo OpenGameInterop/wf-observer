@@ -6,6 +6,8 @@ use anyhow::{Context as _, bail};
 use tokio::process::{Child, Command};
 
 use crate::{
+    authorization::{Allowlist, Policy},
+    cli::PeerCommand,
     paths,
     runtime::{self, ServiceInfo},
     settings::{self, AccessMode},
@@ -20,7 +22,7 @@ const RECONCILIATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// Starts or reuses the background service without requiring a running game.
 pub(crate) async fn start() -> anyhow::Result<()> {
     let _command = singleton::command_lock()?;
-    start_configured(settings::load()?.access).await?;
+    start_configured(&Policy::load(settings::load()?.access)?).await?;
     runtime::print_access()
 }
 
@@ -29,34 +31,61 @@ pub(crate) async fn set_access(mode: AccessMode) -> anyhow::Result<()> {
     let _command = singleton::command_lock()?;
     let mut settings = settings::load()?;
     let running = runtime::current_agent()?.is_some();
+    let policy = Policy::load(mode)?;
     settings.access = mode;
     settings::save(&settings)?;
     if running {
-        start_configured(mode).await.with_context(|| {
+        start_configured(&policy).await.with_context(|| {
             format!("saved access = \"{mode}\", but failed to apply it; run wf-observer access to inspect the active mode")
         })?;
     }
     runtime::print_access()
 }
 
-async fn start_configured(mode: AccessMode) -> anyhow::Result<()> {
-    if reconcile_existing_agent(mode).await? {
+/// Persists approvals and confirms that a running service has applied them.
+pub(crate) async fn peers(command: PeerCommand) -> anyhow::Result<()> {
+    if matches!(command, PeerCommand::List) {
+        Allowlist::load()?.print();
+        return runtime::print_access();
+    }
+
+    let _command = singleton::command_lock()?;
+    let mode = settings::load()?.access;
+    let mut allowlist = Allowlist::load()?;
+    match command {
+        PeerCommand::Allow { endpoint_id, name } => allowlist.allow(endpoint_id, name)?,
+        PeerCommand::Revoke { endpoint_id } => allowlist.revoke(endpoint_id),
+        PeerCommand::List => unreachable!(),
+    }
+    let running = runtime::current_agent()?.is_some();
+    allowlist.save()?;
+    if running {
+        start_configured(&allowlist.policy(mode)).await.context(
+            "saved allowlist, but failed to apply it; run wf-observer start to retry or wf-observer stop to close existing connections",
+        )?;
+    }
+    allowlist.print();
+    runtime::print_access()
+}
+
+async fn start_configured(policy: &Policy) -> anyhow::Result<()> {
+    if reconcile_existing_agent(policy).await? {
         return Ok(());
     }
 
-    launch_agent(mode).await
+    launch_agent(policy).await
 }
 
-async fn launch_agent(mode: AccessMode) -> anyhow::Result<()> {
+async fn launch_agent(policy: &Policy) -> anyhow::Result<()> {
     let mut retries_remaining = 1;
 
     loop {
-        match launch_agent_once(mode).await {
+        match launch_agent_once(policy).await {
             Ok(agent_pid) => {
                 println!("Service started (PID {agent_pid})");
                 return Ok(());
             }
-            Err(error) => match competing_agent(mode).await {
+            Err(error) => match competing_agent(policy).await {
                 Ok(CompetingAgent::Compatible(pid)) => {
                     report_already_running(pid);
                     return Ok(());
@@ -76,7 +105,7 @@ async fn launch_agent(mode: AccessMode) -> anyhow::Result<()> {
     }
 }
 
-async fn launch_agent_once(mode: AccessMode) -> anyhow::Result<u32> {
+async fn launch_agent_once(policy: &Policy) -> anyhow::Result<u32> {
     let mut child = spawn_agent()?;
     let agent_pid = child
         .id()
@@ -110,13 +139,15 @@ async fn launch_agent_once(mode: AccessMode) -> anyhow::Result<u32> {
 
             let registered = runtime::current_agent();
             if !registered.as_ref().is_ok_and(|record| {
-                record
-                    .as_ref()
-                    .is_some_and(|record| record.pid() == agent_pid && is_compatible(record, mode))
+                record.as_ref().is_some_and(|record| {
+                    record.pid() == agent_pid && is_compatible(record, policy)
+                })
             }) {
                 terminate_child(&mut child).await?;
                 registered?;
-                bail!("background agent did not publish the requested access mode");
+                bail!(
+                    "background agent did not publish the requested access mode and authorization policy"
+                );
             }
             Ok(agent_pid)
         }
@@ -127,12 +158,12 @@ async fn launch_agent_once(mode: AccessMode) -> anyhow::Result<u32> {
     }
 }
 
-async fn reconcile_existing_agent(mode: AccessMode) -> anyhow::Result<bool> {
+async fn reconcile_existing_agent(policy: &Policy) -> anyhow::Result<bool> {
     let Some(agent) = runtime::current_agent()? else {
         return Ok(false);
     };
 
-    if is_compatible(&agent, mode) {
+    if is_compatible(&agent, policy) {
         report_already_running(agent.pid());
         return Ok(true);
     }
@@ -148,8 +179,8 @@ async fn reconcile_existing_agent(mode: AccessMode) -> anyhow::Result<bool> {
     Ok(false)
 }
 
-fn is_compatible(agent: &ServiceInfo, mode: AccessMode) -> bool {
-    agent.is_compatible_with(env!("CARGO_PKG_VERSION"), mode)
+fn is_compatible(agent: &ServiceInfo, policy: &Policy) -> bool {
+    agent.is_compatible_with(env!("CARGO_PKG_VERSION"), policy)
 }
 
 fn report_already_running(pid: u32) {
@@ -163,13 +194,13 @@ enum CompetingAgent {
     Vacant,
 }
 
-async fn competing_agent(mode: AccessMode) -> anyhow::Result<CompetingAgent> {
+async fn competing_agent(policy: &Policy) -> anyhow::Result<CompetingAgent> {
     let lock_path = paths::agent_lock_path()?;
     let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
 
     loop {
         if let Some(agent) = runtime::current_agent()? {
-            return Ok(if is_compatible(&agent, mode) {
+            return Ok(if is_compatible(&agent, policy) {
                 CompetingAgent::Compatible(agent.pid())
             } else {
                 CompetingAgent::Incompatible

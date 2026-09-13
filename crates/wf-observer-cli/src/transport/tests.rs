@@ -35,7 +35,7 @@ impl TestServer {
         let server = start_with_limits(
             iroh::SecretKey::generate(),
             state.view(),
-            crate::settings::AccessMode::Local,
+            crate::authorization::Policy::default(),
             limits,
         )
         .await?;

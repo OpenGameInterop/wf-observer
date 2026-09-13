@@ -42,7 +42,7 @@ impl TestClient {
         let server = start(
             iroh::SecretKey::generate(),
             state.view(),
-            crate::settings::AccessMode::Local,
+            crate::authorization::Policy::default(),
         )
         .await?;
         let client = Client::connect(server.endpoint().addr()).await?;
@@ -429,7 +429,7 @@ async fn one_component_can_select_many_topics_without_exhausting_request_slots()
     let server = super::server::start_with_limits(
         iroh::SecretKey::generate(),
         state.view(),
-        crate::settings::AccessMode::Local,
+        crate::authorization::Policy::default(),
         super::connection::SubscriptionLimits {
             per_connection: 34,
             global: 34,

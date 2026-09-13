@@ -4,7 +4,7 @@ use anyhow::{Context as _, ensure};
 use derive_more::Display;
 use memory_reader::ProcessInstance;
 
-use crate::settings::AccessMode;
+use crate::{authorization::Policy, settings::AccessMode};
 
 pub(super) const RECORD_VERSION: u32 = 1;
 
@@ -63,6 +63,8 @@ pub(super) struct ServiceIdentity {
     pub(super) access_mode: Option<AccessMode>,
     #[serde(default)]
     pub(super) local_ticket: Option<String>,
+    #[serde(default)]
+    pub(super) reader_policy: Option<Policy>,
 }
 
 impl Activity {
@@ -79,7 +81,7 @@ impl ServiceInfo {
     pub(super) fn new(
         service: ProcessInstance,
         endpoint_id: String,
-        access_mode: AccessMode,
+        policy: &Policy,
         local_ticket: String,
     ) -> Self {
         Self {
@@ -88,8 +90,9 @@ impl ServiceInfo {
                 application_version: env!("CARGO_PKG_VERSION").to_owned(),
                 process: service.into(),
                 endpoint_id,
-                access_mode: Some(access_mode),
+                access_mode: Some(policy.mode),
                 local_ticket: Some(local_ticket),
+                reader_policy: Some(policy.clone()),
             },
             host: HostStatus::default(),
         }
@@ -116,10 +119,11 @@ impl ServiceInfo {
     }
 
     /// Returns whether the running service can be reused, regardless of its sessions.
-    pub(crate) fn is_compatible_with(&self, version: &str, access_mode: AccessMode) -> bool {
+    pub(crate) fn is_compatible_with(&self, version: &str, policy: &Policy) -> bool {
         self.version() == version
-            && self.service.access_mode == Some(access_mode)
+            && self.service.access_mode == Some(policy.mode)
             && self.service.local_ticket.is_some()
+            && self.service.reader_policy.as_ref() == Some(policy)
     }
 }
 

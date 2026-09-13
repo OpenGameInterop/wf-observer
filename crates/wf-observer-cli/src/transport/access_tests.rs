@@ -4,14 +4,14 @@ use std::{net::UdpSocket, time::Duration};
 use tokio::time::timeout;
 use wf_observer_sdk::raw::Client;
 
-use crate::{settings::AccessMode, test_support as fixture};
+use crate::{authorization::Policy, settings::AccessMode, test_support as fixture};
 
 use super::start;
 
 #[tokio::test]
 async fn local_mode_serves_the_sdk_without_public_discovery() -> anyhow::Result<()> {
     let state = fixture::state()?;
-    let server = start(SecretKey::generate(), state.view(), AccessMode::Local).await?;
+    let server = start(SecretKey::generate(), state.view(), Policy::default()).await?;
     assert!(!server.endpoint().bound_sockets().is_empty());
     assert!(
         server
@@ -37,7 +37,13 @@ async fn switching_from_remote_closes_readers_and_keeps_identity_and_local_acces
 -> anyhow::Result<()> {
     let state = fixture::state()?;
     let key = SecretKey::generate();
-    let remote = start(key.clone(), state.view(), AccessMode::Remote).await?;
+    let peer = Endpoint::bind(presets::Minimal).await?;
+    let remote = start(
+        key.clone(),
+        state.view(),
+        Policy::new(AccessMode::Remote, [peer.id()]),
+    )
+    .await?;
     assert!(
         remote
             .endpoint()
@@ -46,14 +52,17 @@ async fn switching_from_remote_closes_readers_and_keeps_identity_and_local_acces
             .all(|socket| socket.ip().is_unspecified())
     );
     assert!(!remote.endpoint().address_lookup()?.is_empty());
-    let peer = Endpoint::bind(presets::Minimal).await?;
     let address: iroh_tickets::endpoint::EndpointTicket = remote.local_ticket().parse()?;
     let connection = peer
         .connect(address.endpoint_addr().clone(), protocol::v1::ALPN_V1)
         .await?;
+    let rpc = irpc::Client::<protocol::v1::ObserverProtocolV1>::boxed(
+        irpc_iroh::IrohRemoteConnection::new(connection.clone()),
+    );
+    rpc.rpc(protocol::v1::Ping).await?;
     remote.shutdown().await?;
     timeout(Duration::from_secs(5), connection.closed()).await?;
-    let local = start(key.clone(), state.view(), AccessMode::Local).await?;
+    let local = start(key.clone(), state.view(), Policy::default()).await?;
     assert_eq!(local.endpoint().id(), key.public());
     let client = Client::connect_endpoint(&local.local_ticket()).await?;
     client.ping().await?;
@@ -78,7 +87,12 @@ async fn only_remote_mode_accepts_a_non_loopback_destination() -> anyhow::Result
     let state = fixture::state()?;
     let peer = Endpoint::bind(presets::Minimal).await?;
     for mode in [AccessMode::Local, AccessMode::Remote] {
-        let server = start(SecretKey::generate(), state.view(), mode).await?;
+        let server = start(
+            SecretKey::generate(),
+            state.view(),
+            Policy::new(mode, [peer.id()]),
+        )
+        .await?;
         let port = server
             .endpoint()
             .bound_sockets()
@@ -98,7 +112,12 @@ async fn only_remote_mode_accepts_a_non_loopback_destination() -> anyhow::Result
                 "local service accepted a non-loopback destination"
             ),
             AccessMode::Remote => {
-                result??.close(0_u32.into(), b"test complete");
+                let connection = result??;
+                let rpc = irpc::Client::<protocol::v1::ObserverProtocolV1>::boxed(
+                    irpc_iroh::IrohRemoteConnection::new(connection.clone()),
+                );
+                rpc.rpc(protocol::v1::Ping).await?;
+                connection.close(0_u32.into(), b"test complete");
             }
         }
         server.shutdown().await?;

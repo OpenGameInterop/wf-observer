@@ -3,7 +3,7 @@ use std::fs;
 use anyhow::Context as _;
 use memory_reader::ProcessInstance;
 
-use crate::singleton::AgentLock;
+use crate::{settings::AccessMode, singleton::AgentLock};
 
 use super::{
     record::{
@@ -25,6 +25,41 @@ fn current_process() -> anyhow::Result<RecordedProcess> {
     current_instance().map(Into::into)
 }
 
+#[test]
+fn legacy_agent_remains_visible_but_cannot_be_reused_for_either_mode() -> anyhow::Result<()> {
+    let mut legacy = serde_json::to_value(record(current_process()?, None))?;
+    let service = legacy["service"]
+        .as_object_mut()
+        .context("missing service")?;
+    service.remove("access_mode");
+    service.remove("local_ticket");
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("runtime.json");
+    write_atomic(&path, &legacy)?;
+    let agent = current_agent_at(&path, &directory.path().join("agent.lock"))?
+        .context("legacy agent must remain visible for replacement and shutdown")?;
+    for mode in [AccessMode::Local, AccessMode::Remote] {
+        assert!(!agent.is_compatible_with("1.2.3", mode));
+    }
+    let mut output = Vec::new();
+    status::write_status(&mut output, &agent, AccessMode::Local)?;
+    assert!(String::from_utf8(output)?.contains("Active access: unknown"));
+    Ok(())
+}
+
+#[test]
+fn status_reports_configured_and_active_modes_independently() -> anyhow::Result<()> {
+    let mut agent = record(current_process()?, None);
+    agent.service.access_mode = Some(AccessMode::Remote);
+    let mut output = Vec::new();
+    status::write_status(&mut output, &agent, AccessMode::Local)?;
+    let output = String::from_utf8(output)?;
+    assert!(output.contains("Configured access: local"));
+    assert!(output.contains("Active access: remote"));
+    assert!(output.contains("Remote reader authorization: not implemented"));
+    Ok(())
+}
+
 fn record(service: RecordedProcess, target: Option<RecordedProcess>) -> ServiceInfo {
     ServiceInfo {
         schema_version: RECORD_VERSION,
@@ -32,6 +67,8 @@ fn record(service: RecordedProcess, target: Option<RecordedProcess>) -> ServiceI
             application_version: "1.2.3".to_owned(),
             process: service,
             endpoint_id: "test-endpoint".to_owned(),
+            access_mode: Some(AccessMode::Local),
+            local_ticket: Some("test-ticket".to_owned()),
         },
         host: HostStatus {
             discovery_error: None,
@@ -73,12 +110,13 @@ fn service_liveness_is_independent_of_its_sessions() -> anyhow::Result<()> {
         write_atomic(&path, &expected)?;
         let actual = current_agent_at(&path, &lock_path)?.context("live service was hidden")?;
         assert_eq!(actual, expected);
-        assert!(actual.is_compatible_with("1.2.3"));
-        assert!(!actual.is_compatible_with("2.0.0"));
+        assert!(actual.is_compatible_with("1.2.3", AccessMode::Local));
+        assert!(!actual.is_compatible_with("2.0.0", AccessMode::Local));
+        assert!(!actual.is_compatible_with("1.2.3", AccessMode::Remote));
         assert!(path.exists());
 
         let mut status = Vec::new();
-        status::write_status(&mut status, &actual)?;
+        status::write_status(&mut status, &actual, AccessMode::Local)?;
         let status = String::from_utf8(status)?;
         assert!(status.contains("Service: running"));
         assert!(status.contains(target_status));
@@ -93,12 +131,22 @@ fn host_updates_keep_service_identity_and_clear_only_ended_sessions() -> anyhow:
     let lock_path = directory.path().join("agent.lock");
     let _lock = AgentLock::acquire(&lock_path)?;
     let owner = current_instance()?;
-    let initial = ServiceInfo::new(owner, "test-endpoint".to_owned());
+    let initial = ServiceInfo::new(
+        owner,
+        "test-endpoint".to_owned(),
+        AccessMode::Local,
+        "test-ticket".to_owned(),
+    );
     write_atomic(&path, &initial)?;
     let mut registration = Registration {
         path: path.clone(),
         agent: owner,
-        record: ServiceInfo::new(owner, "test-endpoint".to_owned()),
+        record: ServiceInfo::new(
+            owner,
+            "test-endpoint".to_owned(),
+            AccessMode::Local,
+            "test-ticket".to_owned(),
+        ),
         registered: true,
     };
 
@@ -237,7 +285,12 @@ fn unregister_does_not_remove_a_replacement_record() -> anyhow::Result<()> {
     Registration {
         path: path.clone(),
         agent: owner,
-        record: ServiceInfo::new(owner, "test-endpoint".to_owned()),
+        record: ServiceInfo::new(
+            owner,
+            "test-endpoint".to_owned(),
+            AccessMode::Local,
+            "test-ticket".to_owned(),
+        ),
         registered: true,
     }
     .unregister()?;

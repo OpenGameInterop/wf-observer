@@ -13,7 +13,12 @@ struct TestClient {
 impl TestClient {
     async fn start() -> anyhow::Result<Self> {
         let state = fixture::state()?;
-        let server = start(iroh::SecretKey::generate(), state.view()).await?;
+        let server = start(
+            iroh::SecretKey::generate(),
+            state.view(),
+            crate::settings::AccessMode::Local,
+        )
+        .await?;
         let ticket = iroh_tickets::endpoint::EndpointTicket::new(server.endpoint().addr());
         let client = sdk::connect(ticket.to_string())
             .await

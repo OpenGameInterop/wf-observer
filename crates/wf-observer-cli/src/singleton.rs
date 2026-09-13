@@ -7,6 +7,12 @@ use std::{
 
 use anyhow::Context as _;
 
+/// Serializes start, stop, and access changes without blocking the agent's startup.
+pub(crate) fn command_lock() -> anyhow::Result<AgentLock> {
+    AgentLock::try_acquire(&crate::paths::command_lock_path()?)?
+        .context("another service-management command is running; retry when it finishes")
+}
+
 /// An exclusive lock held for the lifetime of the local agent.
 pub(crate) struct AgentLock {
     #[allow(

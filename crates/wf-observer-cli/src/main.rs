@@ -14,6 +14,7 @@ mod provider_host;
 mod providers;
 mod runtime;
 mod service;
+mod settings;
 mod singleton;
 mod startup;
 mod transport;
@@ -43,6 +44,8 @@ async fn main() -> ExitCode {
         cli::Command::Start => launch::start().await,
         cli::Command::Status => runtime::print_status(),
         cli::Command::Stop => runtime::stop().await,
+        cli::Command::Access { mode: Some(mode) } => launch::set_access(mode).await,
+        cli::Command::Access { mode: None } => runtime::print_access(),
         cli::Command::Agent => agent::run().await,
     };
 

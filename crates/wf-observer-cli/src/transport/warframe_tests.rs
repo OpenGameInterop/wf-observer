@@ -49,7 +49,12 @@ impl TestWarframe {
                 },
             }],
         })?;
-        let server = start(iroh::SecretKey::generate(), state.view()).await?;
+        let server = start(
+            iroh::SecretKey::generate(),
+            state.view(),
+            crate::settings::AccessMode::Local,
+        )
+        .await?;
         Ok(Self { state, server })
     }
 

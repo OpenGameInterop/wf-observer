@@ -27,6 +27,11 @@ pub(crate) enum Command {
     Status,
     /// Stops the background service, even while no game is running.
     Stop,
+    /// Shows or changes access mode; a change restarts a running service.
+    Access {
+        #[arg(value_enum)]
+        mode: Option<crate::settings::AccessMode>,
+    },
     /// Runs the internal background service.
     #[command(name = "_agent", hide = true)]
     Agent,

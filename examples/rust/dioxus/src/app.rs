@@ -10,6 +10,11 @@ use crate::{
 
 const STYLES: &str = include_str!("../assets/app.css");
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+const CONNECTION_HELP: &str = "Start the service, then copy the local connection ticket from wf-observer status. For another device, enable remote access and use its endpoint ID.";
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+const CONNECTION_HELP: &str = "Enable wf-observer access remote, then copy the endpoint ID from wf-observer status. Browser connections require remote access.";
+
 #[component]
 pub fn App() -> Element {
     let mut endpoint = use_signal(String::new);
@@ -39,7 +44,7 @@ pub fn App() -> Element {
                         p { "Explore live player data, currency balances, inventory and chat through the Rust SDK." }
                         div { class: "topic-chips", for name in ["Player", "Currencies", "Inventory", "Chat"] { span { "{name}" } } }
                     }
-                    Card { title: "Connect to your observer", subtitle: "Start the service, then copy the endpoint ID from wf-observer status.",
+                    Card { title: "Connect to your observer", subtitle: CONNECTION_HELP,
                         label { r#for: "endpoint", "Endpoint ID or ticket" }
                         Input { id: "endpoint", value: endpoint(), placeholder: "Paste your endpoint ID or ticket", oninput: move |event: FormEvent| endpoint.set(event.value()) }
                         Button { disabled: connecting() || endpoint().trim().is_empty(), onclick: move |_| {
@@ -56,7 +61,7 @@ pub fn App() -> Element {
                             });
                         }, if connecting() { "Connecting…" } else { "Connect" } }
                         if let Some(problem) = error() { Notice { error: true, "{problem}" } }
-                        p { class: "small muted", "Read-only telemetry. Treat your endpoint as private: anyone who has it can attempt to read the data you expose." }
+                        p { class: "small muted", "Read-only telemetry. Remote reader authorization is not yet implemented: anyone with the endpoint ID can read exposed data while remote access is enabled." }
                     }
                 }
             }

@@ -32,9 +32,20 @@ impl Client {
     ///
     /// Returns an error if the endpoint cannot bind or the service cannot be reached.
     pub async fn connect(address: EndpointAddr) -> Result<Self, ClientError> {
-        let endpoint = Endpoint::bind(presets::N0)
-            .await
-            .map_err(ClientError::transport)?;
+        let builder = Endpoint::builder(presets::N0);
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        let builder = if is_loopback_address(&address) {
+            crate::local::endpoint_builder()?
+        } else {
+            builder
+        };
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        if is_loopback_address(&address) {
+            return Err(ClientError::InvalidEndpoint(
+                "browser clients require remote access and a service endpoint ID".into(),
+            ));
+        }
+        let endpoint = builder.bind().await.map_err(ClientError::transport)?;
         let rpc =
             irpc_iroh::client::<wire::ObserverProtocolV1>(endpoint.clone(), address, wire::ALPN_V1);
         let client = Self {
@@ -209,6 +220,14 @@ impl Client {
             result
         }
     }
+}
+
+/// Requires at least one address and excludes every relay or non-loopback route.
+pub(crate) fn is_loopback_address(address: &EndpointAddr) -> bool {
+    !address.addrs.is_empty()
+        && address.addrs.iter().all(|address| {
+            matches!(address, iroh::TransportAddr::Ip(socket) if socket.ip().is_loopback())
+        })
 }
 
 impl Drop for Connection {

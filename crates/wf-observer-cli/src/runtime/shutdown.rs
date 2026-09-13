@@ -22,6 +22,7 @@ pub(super) struct ShutdownRequest {
 
 /// Requests cooperative shutdown and waits for the current agent to exit.
 pub(crate) async fn stop() -> anyhow::Result<()> {
+    let _command = crate::singleton::command_lock()?;
     let Some(record) = current_agent()? else {
         println!("Service is not running");
         return Ok(());

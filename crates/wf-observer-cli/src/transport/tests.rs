@@ -32,8 +32,14 @@ impl TestServer {
 
     async fn with_limits(limits: SubscriptionLimits) -> anyhow::Result<Self> {
         let state = fixture::state()?;
-        let server = start_with_limits(iroh::SecretKey::generate(), state.view(), limits).await?;
-        let endpoint = Endpoint::bind(presets::N0).await?;
+        let server = start_with_limits(
+            iroh::SecretKey::generate(),
+            state.view(),
+            crate::settings::AccessMode::Local,
+            limits,
+        )
+        .await?;
+        let endpoint = Endpoint::bind(presets::Minimal).await?;
         let connection = endpoint
             .connect(server.endpoint().addr(), wire::ALPN_V1)
             .await?;

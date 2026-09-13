@@ -18,3 +18,6 @@ mod sdk_api_tests;
 
 #[cfg(test)]
 mod warframe_tests;
+
+#[cfg(test)]
+mod access_tests;

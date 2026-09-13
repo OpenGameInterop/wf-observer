@@ -1,13 +1,14 @@
 use anyhow::Context as _;
 use iroh::{
-    Endpoint, SecretKey,
-    endpoint::{QuicTransportConfig, presets},
+    Endpoint, EndpointAddr, SecretKey,
+    endpoint::{BindOpts, NetReportConfig, PortmapperConfig, QuicTransportConfig, presets},
     protocol::Router,
 };
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tokio_util::task::TaskTracker;
 
 use super::connection::{Handler, SubscriptionLimits};
-use crate::service::ServiceView;
+use crate::{service::ServiceView, settings::AccessMode};
 
 const SEND_WINDOW_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -19,6 +20,23 @@ pub(crate) struct Server {
 impl Server {
     pub(crate) fn endpoint(&self) -> &Endpoint {
         self.router.endpoint()
+    }
+
+    /// A direct loopback ticket for this run, including when remote access is enabled.
+    pub(crate) fn local_ticket(&self) -> String {
+        let address = self.endpoint().bound_sockets().into_iter().fold(
+            EndpointAddr::new(self.endpoint().id()),
+            |address, mut socket| {
+                if socket.ip().is_unspecified() {
+                    socket.set_ip(match socket.ip() {
+                        IpAddr::V4(_) => Ipv4Addr::LOCALHOST.into(),
+                        IpAddr::V6(_) => Ipv6Addr::LOCALHOST.into(),
+                    });
+                }
+                address.with_ip_addr(socket)
+            },
+        );
+        iroh_tickets::endpoint::EndpointTicket::new(address).to_string()
     }
 
     pub(crate) async fn shutdown(self) -> anyhow::Result<()> {
@@ -33,13 +51,18 @@ impl Server {
     }
 }
 
-pub(crate) async fn start(secret_key: SecretKey, view: ServiceView) -> anyhow::Result<Server> {
-    start_with_limits(secret_key, view, SubscriptionLimits::default()).await
+pub(crate) async fn start(
+    secret_key: SecretKey,
+    view: ServiceView,
+    mode: AccessMode,
+) -> anyhow::Result<Server> {
+    start_with_limits(secret_key, view, mode, SubscriptionLimits::default()).await
 }
 
 pub(super) async fn start_with_limits(
     secret_key: SecretKey,
     view: ServiceView,
+    mode: AccessMode,
     limits: SubscriptionLimits,
 ) -> anyhow::Result<Server> {
     let message_bytes = view.message_bytes();
@@ -50,7 +73,19 @@ pub(super) async fn start_with_limits(
         .receive_window((4 * message_bytes).into())
         .send_window(SEND_WINDOW_BYTES)
         .build();
-    let endpoint = Endpoint::builder(presets::N0)
+    let builder = match mode {
+        AccessMode::Local => Endpoint::builder(presets::Minimal)
+            .clear_ip_transports()
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))?
+            .bind_addr_with_opts(
+                (Ipv6Addr::LOCALHOST, 0),
+                BindOpts::default().set_is_required(false),
+            )?
+            .portmapper_config(PortmapperConfig::Disabled)
+            .net_report_config(NetReportConfig::minimal()),
+        AccessMode::Remote => Endpoint::builder(presets::N0),
+    };
+    let endpoint = builder
         .secret_key(secret_key)
         .transport_config(transport)
         .bind()

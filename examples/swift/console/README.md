@@ -3,7 +3,7 @@
 Requires macOS 13 or newer and Swift 5.9 or newer.
 
 ```bash
-just example swift --endpoint ENDPOINT_ID
+just example swift --endpoint LOCAL_TICKET
 ```
 
 See the [examples overview](../../README.md) for service setup, packaging and

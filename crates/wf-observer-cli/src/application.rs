@@ -2,7 +2,10 @@
 
 use anyhow::Context as _;
 
-use crate::{identity, providers, service::ServiceState, singleton::AgentLock, transport};
+use crate::{
+    identity, providers, service::ServiceState, settings::AccessMode, singleton::AgentLock,
+    transport,
+};
 use tokio_util::task::AbortOnDropHandle;
 
 /// A running local application and its exclusive instance ownership.
@@ -15,14 +18,14 @@ pub(crate) struct RunningApplication {
 
 impl RunningApplication {
     /// Starts the local transport with ownership acquired by its caller.
-    pub(crate) async fn start_with_lock(lock: AgentLock) -> anyhow::Result<Self> {
+    pub(crate) async fn start_with_lock(lock: AgentLock, mode: AccessMode) -> anyhow::Result<Self> {
         let secret_key = identity::load_or_create()?;
         let manifests: Vec<_> = providers::PROVIDERS
             .iter()
             .map(|provider| provider.manifest())
             .collect();
         let state = ServiceState::new(&manifests)?;
-        let server = transport::start(secret_key, state.view()).await?;
+        let server = transport::start(secret_key, state.view(), mode).await?;
         let watched = state.clone();
         let maintenance = AbortOnDropHandle::new(tokio::spawn(async move {
             loop {
@@ -42,6 +45,10 @@ impl RunningApplication {
     /// Returns the running transport endpoint.
     pub(crate) fn endpoint(&self) -> &iroh::Endpoint {
         self.server.endpoint()
+    }
+
+    pub(crate) fn local_ticket(&self) -> String {
+        self.server.local_ticket()
     }
 
     pub(crate) fn state(&self) -> ServiceState {

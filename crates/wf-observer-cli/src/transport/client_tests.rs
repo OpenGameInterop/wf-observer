@@ -39,7 +39,12 @@ struct TestClient {
 impl TestClient {
     async fn start() -> anyhow::Result<Self> {
         let state = fixture::state()?;
-        let server = start(iroh::SecretKey::generate(), state.view()).await?;
+        let server = start(
+            iroh::SecretKey::generate(),
+            state.view(),
+            crate::settings::AccessMode::Local,
+        )
+        .await?;
         let client = Client::connect(server.endpoint().addr()).await?;
         Ok(Self {
             state,
@@ -424,6 +429,7 @@ async fn one_component_can_select_many_topics_without_exhausting_request_slots()
     let server = super::server::start_with_limits(
         iroh::SecretKey::generate(),
         state.view(),
+        crate::settings::AccessMode::Local,
         super::connection::SubscriptionLimits {
             per_connection: 34,
             global: 34,

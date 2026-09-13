@@ -10,6 +10,7 @@ use crate::{
     lifecycle, paths,
     prelude::*,
     runtime::{self, Registration},
+    settings,
     singleton::AgentLock,
     startup,
 };
@@ -41,8 +42,13 @@ impl RunningAgent {
         detach_current_process()?;
 
         let lock = AgentLock::acquire(&paths::agent_lock_path()?)?;
-        let application = RunningApplication::start_with_lock(lock).await?;
-        let registration = match Registration::publish(application.endpoint().id().to_string()) {
+        let mode = settings::load()?.access;
+        let application = RunningApplication::start_with_lock(lock, mode).await?;
+        let registration = match Registration::publish(
+            application.endpoint().id().to_string(),
+            mode,
+            application.local_ticket(),
+        ) {
             Ok(registration) => registration,
             Err(error) => {
                 return match application.shutdown().await {
@@ -55,7 +61,7 @@ impl RunningAgent {
             }
         };
 
-        info!(endpoint_id = %application.endpoint().id(), "background service started");
+        info!(endpoint_id = %application.endpoint().id(), access = %mode, "background service started");
         Ok(Self {
             registration,
             application,

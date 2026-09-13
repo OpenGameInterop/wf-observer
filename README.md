@@ -5,24 +5,10 @@ inventory, currencies, player identity, and chat through a shared SDK.
 
 We only read memory. We never write to it or inject code.
 
-The service accepts network connections through Iroh, including its default
-relays. Reader access control is not implemented: anyone with the endpoint ID can
-read the exposed data. Keep endpoint IDs and tickets private.
+The service defaults to local-only host only (applications running on your device)
 
-## Run from source
-
-The topic API described here is unreleased. The published CLI 0.0.1 predates it;
-use this checkout for the service and examples. From the repository root:
-
-```bash
-cargo run --locked -p wf-observer-cli -- start
-cargo run --locked -p wf-observer-cli -- status
-cargo run --locked -p example-rust-dioxus --features dioxus/desktop
-```
-
-Paste the endpoint ID from `status` into the showcase. Warframe can be started
-before or after the service. Topic data requires a supported, logged-in game.
-Use `cargo run --locked -p wf-observer-cli -- stop` to stop the service.
+If you want to allow remote connections to connect, run:
+```wf-observer access remote```
 
 ## API
 

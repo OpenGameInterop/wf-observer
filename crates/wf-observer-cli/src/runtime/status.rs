@@ -2,6 +2,8 @@
 
 use std::io;
 
+use crate::settings::{self, AccessMode};
+
 use super::{
     record::{Activity, ServiceInfo, TargetStatus},
     storage::current_agent,
@@ -9,20 +11,64 @@ use super::{
 
 /// Prints discovery health and each target independently of service liveness.
 pub(crate) fn print_status() -> anyhow::Result<()> {
+    let configured = settings::load()?.access;
     let Some(record) = current_agent()? else {
         println!("Service: not running");
+        write_access(&mut io::stdout().lock(), configured, None)?;
         return Ok(());
     };
 
-    write_status(&mut io::stdout().lock(), &record)?;
+    write_status(&mut io::stdout().lock(), &record, configured)?;
     Ok(())
 }
 
-pub(super) fn write_status(output: &mut impl io::Write, record: &ServiceInfo) -> io::Result<()> {
+pub(crate) fn print_access() -> anyhow::Result<()> {
+    let configured = settings::load()?.access;
+    let record = current_agent()?;
+    write_access(&mut io::stdout().lock(), configured, record.as_ref())?;
+    Ok(())
+}
+
+fn write_access(
+    output: &mut impl io::Write,
+    configured: AccessMode,
+    record: Option<&ServiceInfo>,
+) -> io::Result<()> {
+    writeln!(output, "Configured access: {configured}")?;
+    match record {
+        Some(record) => match record.service.access_mode {
+            Some(active) => writeln!(output, "Active access: {active}")?,
+            None => writeln!(
+                output,
+                "Active access: unknown (older service; run wf-observer start)"
+            )?,
+        },
+        None => writeln!(output, "Active access: none (service not running)")?,
+    }
+    if configured == AccessMode::Remote
+        || record.is_some_and(|record| record.service.access_mode != Some(AccessMode::Local))
+    {
+        writeln!(
+            output,
+            "Remote reader authorization: not implemented; readers with the endpoint ID can access exposed data"
+        )?;
+    }
+    Ok(())
+}
+
+pub(super) fn write_status(
+    output: &mut impl io::Write,
+    record: &ServiceInfo,
+    configured: AccessMode,
+) -> io::Result<()> {
     writeln!(output, "Service: running")?;
     writeln!(output, "Version: {}", record.version())?;
     writeln!(output, "Service PID: {}", record.pid())?;
+    write_access(output, configured, Some(record))?;
     writeln!(output, "Iroh endpoint ID: {}", record.service.endpoint_id)?;
+    if let Some(ticket) = &record.service.local_ticket {
+        writeln!(output, "Local connection ticket: {ticket}")?;
+    }
     if let Some(error) = &record.host.discovery_error {
         writeln!(output, "Discovery: retrying ({error})")?;
     } else if record.host.targets.is_empty() {

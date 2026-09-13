@@ -7,19 +7,22 @@ Each console example connects, selects the single Warframe session, reads its
 currency balances, and shuts down the client using a generated binding.
 
 Run these commands from the repository root, log in to Warframe, and copy the
-endpoint ID from `status`:
+local connection ticket from `status`:
 
 ```bash
 cargo run --locked -p wf-observer-cli -- start
 cargo run --locked -p wf-observer-cli -- status
-just example python csharp java kotlin --endpoint ENDPOINT_ID
+just example python csharp java kotlin --endpoint LOCAL_TICKET
 # macOS only:
-just example swift --endpoint ENDPOINT_ID
+just example swift --endpoint LOCAL_TICKET
 ```
 
 Install the [binding prerequisites](../CI.md#generated-bindings) for the selected
 languages. The runner packages each binding once; `--no-package` reuses packages
 under `dist/`. It leaves the service running when the examples finish.
+
+For a service on another device, enable `wf-observer access remote` on that
+device and pass its endpoint ID instead.
 
 To build compiled examples and import the Python example without a service or
 game:

@@ -4,6 +4,8 @@ use anyhow::{Context as _, ensure};
 use derive_more::Display;
 use memory_reader::ProcessInstance;
 
+use crate::settings::AccessMode;
+
 pub(super) const RECORD_VERSION: u32 = 1;
 
 /// The current runtime record for a service and its observed processes.
@@ -56,6 +58,11 @@ pub(super) struct ServiceIdentity {
     pub(super) application_version: String,
     pub(super) process: RecordedProcess,
     pub(super) endpoint_id: String,
+    // Missing fields identify an older agent; never assume it is local-only.
+    #[serde(default)]
+    pub(super) access_mode: Option<AccessMode>,
+    #[serde(default)]
+    pub(super) local_ticket: Option<String>,
 }
 
 impl Activity {
@@ -69,13 +76,20 @@ impl Activity {
 }
 
 impl ServiceInfo {
-    pub(super) fn new(service: ProcessInstance, endpoint_id: String) -> Self {
+    pub(super) fn new(
+        service: ProcessInstance,
+        endpoint_id: String,
+        access_mode: AccessMode,
+        local_ticket: String,
+    ) -> Self {
         Self {
             schema_version: RECORD_VERSION,
             service: ServiceIdentity {
                 application_version: env!("CARGO_PKG_VERSION").to_owned(),
                 process: service.into(),
                 endpoint_id,
+                access_mode: Some(access_mode),
+                local_ticket: Some(local_ticket),
             },
             host: HostStatus::default(),
         }
@@ -102,8 +116,10 @@ impl ServiceInfo {
     }
 
     /// Returns whether the running service can be reused, regardless of its sessions.
-    pub(crate) fn is_compatible_with(&self, version: &str) -> bool {
+    pub(crate) fn is_compatible_with(&self, version: &str, access_mode: AccessMode) -> bool {
         self.version() == version
+            && self.service.access_mode == Some(access_mode)
+            && self.service.local_ticket.is_some()
     }
 }
 

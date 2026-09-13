@@ -8,7 +8,8 @@ use tokio::process::{Child, Command};
 use crate::{
     paths,
     runtime::{self, ServiceInfo},
-    singleton::AgentLock,
+    settings::{self, AccessMode},
+    singleton::{self, AgentLock},
     startup::{self, Status},
 };
 
@@ -18,23 +19,44 @@ const RECONCILIATION_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Starts or reuses the background service without requiring a running game.
 pub(crate) async fn start() -> anyhow::Result<()> {
-    if reconcile_existing_agent().await? {
+    let _command = singleton::command_lock()?;
+    start_configured(settings::load()?.access).await?;
+    runtime::print_access()
+}
+
+/// Saves an explicit mode and applies it if the service is already running.
+pub(crate) async fn set_access(mode: AccessMode) -> anyhow::Result<()> {
+    let _command = singleton::command_lock()?;
+    let mut settings = settings::load()?;
+    let running = runtime::current_agent()?.is_some();
+    settings.access = mode;
+    settings::save(&settings)?;
+    if running {
+        start_configured(mode).await.with_context(|| {
+            format!("saved access = \"{mode}\", but failed to apply it; run wf-observer access to inspect the active mode")
+        })?;
+    }
+    runtime::print_access()
+}
+
+async fn start_configured(mode: AccessMode) -> anyhow::Result<()> {
+    if reconcile_existing_agent(mode).await? {
         return Ok(());
     }
 
-    launch_agent().await
+    launch_agent(mode).await
 }
 
-async fn launch_agent() -> anyhow::Result<()> {
+async fn launch_agent(mode: AccessMode) -> anyhow::Result<()> {
     let mut retries_remaining = 1;
 
     loop {
-        match launch_agent_once().await {
+        match launch_agent_once(mode).await {
             Ok(agent_pid) => {
                 println!("Service started (PID {agent_pid})");
                 return Ok(());
             }
-            Err(error) => match competing_agent().await {
+            Err(error) => match competing_agent(mode).await {
                 Ok(CompetingAgent::Compatible(pid)) => {
                     report_already_running(pid);
                     return Ok(());
@@ -54,7 +76,7 @@ async fn launch_agent() -> anyhow::Result<()> {
     }
 }
 
-async fn launch_agent_once() -> anyhow::Result<u32> {
+async fn launch_agent_once(mode: AccessMode) -> anyhow::Result<u32> {
     let mut child = spawn_agent()?;
     let agent_pid = child
         .id()
@@ -86,6 +108,16 @@ async fn launch_agent_once() -> anyhow::Result<u32> {
                 bail!("background agent exited during startup: {exit_status}");
             }
 
+            let registered = runtime::current_agent();
+            if !registered.as_ref().is_ok_and(|record| {
+                record
+                    .as_ref()
+                    .is_some_and(|record| record.pid() == agent_pid && is_compatible(record, mode))
+            }) {
+                terminate_child(&mut child).await?;
+                registered?;
+                bail!("background agent did not publish the requested access mode");
+            }
             Ok(agent_pid)
         }
         Status::Failed(message) => {
@@ -95,12 +127,12 @@ async fn launch_agent_once() -> anyhow::Result<u32> {
     }
 }
 
-async fn reconcile_existing_agent() -> anyhow::Result<bool> {
+async fn reconcile_existing_agent(mode: AccessMode) -> anyhow::Result<bool> {
     let Some(agent) = runtime::current_agent()? else {
         return Ok(false);
     };
 
-    if is_compatible(&agent) {
+    if is_compatible(&agent, mode) {
         report_already_running(agent.pid());
         return Ok(true);
     }
@@ -116,8 +148,8 @@ async fn reconcile_existing_agent() -> anyhow::Result<bool> {
     Ok(false)
 }
 
-fn is_compatible(agent: &ServiceInfo) -> bool {
-    agent.is_compatible_with(env!("CARGO_PKG_VERSION"))
+fn is_compatible(agent: &ServiceInfo, mode: AccessMode) -> bool {
+    agent.is_compatible_with(env!("CARGO_PKG_VERSION"), mode)
 }
 
 fn report_already_running(pid: u32) {
@@ -131,13 +163,13 @@ enum CompetingAgent {
     Vacant,
 }
 
-async fn competing_agent() -> anyhow::Result<CompetingAgent> {
+async fn competing_agent(mode: AccessMode) -> anyhow::Result<CompetingAgent> {
     let lock_path = paths::agent_lock_path()?;
     let deadline = tokio::time::Instant::now() + STARTUP_TIMEOUT;
 
     loop {
         if let Some(agent) = runtime::current_agent()? {
-            return Ok(if is_compatible(&agent) {
+            return Ok(if is_compatible(&agent, mode) {
                 CompetingAgent::Compatible(agent.pid())
             } else {
                 CompetingAgent::Incompatible

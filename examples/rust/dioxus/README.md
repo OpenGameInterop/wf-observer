@@ -9,7 +9,13 @@ cargo run --locked -p example-rust-dioxus --features dioxus/desktop
 dx serve -p example-rust-dioxus --web
 ```
 
-Paste the endpoint ID or an Iroh ticket into the connection form. The catalog
+For the desktop renderer on the service's machine, paste the **local connection
+ticket** from `wf-observer status`. The service defaults to local-only access.
+The browser renderer and clients on other devices require
+`wf-observer access remote`; use the endpoint ID in that case. Remote reader
+authorization is not yet implemented.
+
+The catalog
 and process health work without a running game; topic data requires a supported,
 logged-in game. See the [endpoint access limitation](../../../README.md).
 

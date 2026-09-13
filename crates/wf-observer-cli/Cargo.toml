@@ -26,6 +26,7 @@ tokio-util = { workspace = true, features = ["rt"] }
 parking_lot = { workspace = true }
 postcard = { workspace = true }
 iroh = { workspace = true, features = ["portmapper"] }
+iroh-tickets = { workspace = true }
 irpc = { workspace = true }
 irpc-iroh = { workspace = true }
 
@@ -33,6 +34,7 @@ derive_aliases = { workspace = true }
 derive_more = { workspace = true, features = ["display", "debug"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }
 
 anyhow = { workspace = true }
 tracing = { workspace = true }
@@ -52,8 +54,6 @@ windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
 [dev-dependencies]
 warframe-model = { path = "../games/warframe/model" }
 wf_observer_sdk = { path = "../wf-observer-sdk" }
-
-iroh-tickets = { workspace = true }
 
 [lints]
 workspace = true

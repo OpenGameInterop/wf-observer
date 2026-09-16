@@ -1,5 +1,8 @@
 # Warframe Observer
 
+> [!IMPORTANT]
+> The published release does not contain the api yet, if you want to test it out early, youll have to build everything yourself from main.
+
 A background service that reads Warframe memory on Linux and Windows.
 
 We only read memory. We never write to it or inject code.

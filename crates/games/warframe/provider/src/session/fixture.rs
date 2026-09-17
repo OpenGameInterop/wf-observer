@@ -10,7 +10,8 @@ pub(super) const OTHER_ACCOUNT: &[u8; 24] = b"abcdef0123456789abcdef01";
 pub(super) struct Memory {
     base: u64,
     bytes: BTreeMap<u64, u8>,
-    change: Option<(u64, u64, Vec<u8>)>,
+    change: Option<(u64, usize, u64, Vec<u8>)>,
+    pub(super) reads: Vec<u64>,
 }
 
 impl Memory {
@@ -19,6 +20,7 @@ impl Memory {
             base,
             bytes: BTreeMap::new(),
             change: None,
+            reads: Vec::new(),
         };
         memory.login();
         memory.inventory();
@@ -50,7 +52,17 @@ impl Memory {
     }
 
     pub(super) fn change_on_read(&mut self, trigger: u64, address: u64, bytes: &[u8]) {
-        self.change = Some((trigger, address, bytes.to_vec()));
+        self.change_on_nth_read(trigger, 1, address, bytes);
+    }
+
+    pub(super) fn change_on_nth_read(
+        &mut self,
+        trigger: u64,
+        nth: usize,
+        address: u64,
+        bytes: &[u8],
+    ) {
+        self.change = Some((trigger, nth, address, bytes.to_vec()));
     }
 
     fn login(&mut self) {
@@ -160,11 +172,17 @@ impl ProcessMemory for Memory {
     }
 
     fn read_into(&mut self, address: u64, output: &mut [u8]) -> Result<(), AccessError> {
+        self.reads.push(address);
+        if let Some((trigger, remaining, _, _)) = &mut self.change
+            && *trigger == address
+        {
+            *remaining = remaining.saturating_sub(1);
+        }
         if self
             .change
             .as_ref()
-            .is_some_and(|change| change.0 == address)
-            && let Some((_, at, bytes)) = self.change.take()
+            .is_some_and(|change| change.0 == address && change.1 == 0)
+            && let Some((_, _, at, bytes)) = self.change.take()
         {
             self.put(at, &bytes);
         }

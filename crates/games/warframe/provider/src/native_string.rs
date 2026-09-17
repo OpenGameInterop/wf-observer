@@ -63,6 +63,12 @@ fn decode_header(header: &[u8; 16], maximum: usize) -> Result<Storage, ReadError
     Ok(storage)
 }
 
+pub(crate) fn encoded_length(header: &[u8; 16]) -> Result<usize, ReadError> {
+    Ok(match decode_header(header, usize::MAX)? {
+        Storage::Inline(length) | Storage::External(_, length) => length,
+    })
+}
+
 pub(crate) fn player_name(value: &str) -> &str {
     value.trim_end_matches(|c| matches!(u32::from(c), 0xe000..=0xf8ff))
 }

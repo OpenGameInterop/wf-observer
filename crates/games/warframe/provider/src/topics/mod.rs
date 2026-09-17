@@ -26,3 +26,5 @@ pub(crate) use chat::{ChatCursor, History as ChatHistory, read_chat, validate_ch
 pub(crate) use currencies::{read_currencies, validate_currencies_layout};
 pub(crate) use inventory::{InventoryError, read_inventory, validate_inventory_layout};
 pub(crate) use player::{read_player, validate_player_layout};
+pub(crate) mod relic_rewards;
+pub(crate) mod screens;

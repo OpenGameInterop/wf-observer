@@ -15,10 +15,23 @@ We only read memory. We never write to it or inject code.
 | `warframe.currencies` | Credits, Endo, tradable and non-tradable Platinum. | Snapshot |
 | `warframe.player` | Account ID and username. | Snapshot |
 | `warframe.chat` | Channel, sender, message text and optional game-local hour/minute. | Event |
+| `warframe.screens` | Visible interface screens, including unknown movie asset paths. | Snapshot |
+| `warframe.relic_rewards` | Current relic picker: closed or up to four ordered choices. | Snapshot |
 
 Snapshot topics support `read()` for one sample, `watch()` for updates, and
 `cached()` to inspect the service cache. Chat is an event stream with explicit
 gap notifications; it has no snapshot API.
+
+```rust,no_run
+# async fn example() -> Result<(), wf_observer_sdk::ObserverError> {
+let client = wf_observer_sdk::connect_local().await?;
+let game = client.warframe().single_session().await?;
+let screens = game.screens().read().await?.screens;
+let picker = game.relic_rewards().read().await?.picker;
+let mut updates = game.relic_rewards().watch().await?.into_stream();
+# client.shutdown().await?;
+# Ok(()) }
+```
 
 The service defaults to local-only access (applications running on your machine).
 If you want remote connections (ie an application on your phone, another device etc.)

@@ -18,11 +18,12 @@ Desktop keys live in the `wf-observer-showcase` local configuration directory;
 browser keys use local storage for the showcase's origin. Clearing storage or
 changing browser profiles requires a new approval.
 
-Catalog and process health work without a game; topic data requires a supported,
-logged-in game.
+Catalog and process health work without a game. Screen detection requires a
+supported running game; account topics additionally require a logged-in account.
 
 The showcase shows player identity, all four currency balances, searchable and
-paged inventory, and live chat with channel filtering and game-local timestamps.
+paged inventory, live chat with channel filtering and game-local timestamps,
+visible screens, and the current relic picker with ordered StoreItem keys.
 Choose one process. Each panel can be independently unmounted to
 release its subscription. Mount it again to resume after a terminal error.
 The chat view retains its latest 200 events and marks source-continuity gaps.

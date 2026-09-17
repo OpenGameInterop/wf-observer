@@ -10,6 +10,45 @@ use std::{fmt, time::Duration};
 
 const VALIDATION_RETRY: Duration = Duration::from_secs(5);
 
+/// Shared prerequisites retain a single validation result and retry deadline
+/// across inventory, relic rewards and the other account topics.
+#[derive(Default)]
+pub(super) struct SharedLayouts {
+    pub(super) login: CachedCheck,
+    pub(super) strings: CachedCheck,
+    pub(super) items: CachedCheck,
+}
+
+impl SharedLayouts {
+    #[cfg(test)]
+    pub(super) fn validated() -> Self {
+        Self {
+            login: CachedCheck::Passed(()),
+            strings: CachedCheck::Passed(()),
+            items: CachedCheck::Passed(()),
+        }
+    }
+    pub(super) fn item_paths(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        use crate::{item_type, string_pool, target::READ_LIMITS};
+        use provider_sdk::memory::TargetReader;
+        self.strings.validate(now, "string pool", || {
+            let mut reader =
+                TargetReader::new(memory, image.base, image.actual.image_size, READ_LIMITS)?;
+            string_pool::validate_string_pool_layout(&mut reader, string_pool::facts::STRINGS)
+        })?;
+        self.items.validate(now, "item types", || {
+            let mut reader =
+                TargetReader::new(memory, image.base, image.actual.image_size, READ_LIMITS)?;
+            item_type::validate_item_types(&mut reader, item_type::facts::ITEM_TYPES)
+        })
+    }
+}
+
 /// Identifying an image does not establish compatibility with any topic.
 #[derive(..Copy)]
 pub(super) struct Executable {

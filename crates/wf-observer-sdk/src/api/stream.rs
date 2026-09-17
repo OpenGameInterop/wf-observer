@@ -1,7 +1,8 @@
 //! Standard Rust streams over the same watches exported to other languages.
 use super::{
     ChatObservation, ChatWatch, CurrenciesState, CurrenciesWatch, InventoryState, InventoryWatch,
-    ObserverError, PlayerState, PlayerWatch,
+    ObserverError, PlayerState, PlayerWatch, RelicRewardsState, RelicRewardsWatch, ScreensState,
+    ScreensWatch,
 };
 
 macro_rules! impl_stream {
@@ -27,3 +28,5 @@ impl_stream!(CurrenciesWatch, CurrenciesState);
 impl_stream!(PlayerWatch, PlayerState);
 impl_stream!(InventoryWatch, InventoryState);
 impl_stream!(ChatWatch, ChatObservation);
+impl_stream!(ScreensWatch, ScreensState);
+impl_stream!(RelicRewardsWatch, RelicRewardsState);

@@ -4349,6 +4349,7 @@ dependencies = [
  "derive_aliases",
  "derive_more 2.1.1",
  "displaydoc",
+ "fastant",
  "memory-reader",
  "provider-sdk",
  "serde",

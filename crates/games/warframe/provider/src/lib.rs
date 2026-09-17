@@ -15,5 +15,6 @@ mod session;
 mod string_pool;
 mod target;
 mod topics;
+mod world;
 
 pub use provider::WarframeProvider;

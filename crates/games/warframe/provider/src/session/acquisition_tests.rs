@@ -8,9 +8,7 @@ use warframe_model::{InventoryFamily, InventorySnapshot, ItemKey};
 
 use super::{CachedCheck, Executable, INVENTORY, WarframeSession};
 
-#[path = "fixture.rs"]
-mod fixture;
-use fixture::{ACCOUNT, Memory, OTHER_ACCOUNT};
+use crate::session::fixture::{ACCOUNT, Memory, OTHER_ACCOUNT};
 
 pub(super) type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
@@ -22,9 +20,7 @@ fn session(base: u64) -> WarframeSession {
             base,
             actual: crate::target::BUILD,
         }),
-        login_layout: CachedCheck::Passed(()),
-        string_layout: CachedCheck::Passed(()),
-        item_layout: CachedCheck::Passed(()),
+        layouts: crate::session::validation::SharedLayouts::validated(),
         ..WarframeSession::default()
     };
     session.inventory.layout = CachedCheck::Passed(());

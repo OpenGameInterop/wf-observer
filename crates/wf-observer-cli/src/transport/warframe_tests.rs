@@ -659,6 +659,174 @@ async fn session_ref(client: &Client) -> anyhow::Result<wire::SessionRef> {
     })
 }
 
+async fn next_relic_snapshot(
+    watch: &sdk::RelicRewardsWatch,
+) -> anyhow::Result<sdk::WarframeRelicRewards> {
+    timeout(Duration::from_secs(5), async {
+        loop {
+            if let sdk::RelicRewardsState::Ready { value } =
+                watch.next().await?.context("relic watcher ended")?
+            {
+                break anyhow::Ok(value);
+            }
+        }
+    })
+    .await?
+}
+
+#[tokio::test]
+async fn screens_and_relic_rewards_cross_raw_and_concrete_apis() -> anyhow::Result<()> {
+    use sdk::raw::warframe::{
+        RelicRewardChoice, RelicRewardPicker, RelicRewardsSnapshot, Screen, ScreensSnapshot,
+        decode_relic_rewards, decode_screens,
+    };
+    let test = TestWarframe::start().await?;
+    let raw = Client::connect(test.server.endpoint().addr()).await?;
+    let screens_sub = raw.subscribe_screens(wire::SessionSelector::All).await?;
+    let relic_sub = raw
+        .subscribe_relic_rewards(wire::SessionSelector::All)
+        .await?;
+    let screens = ScreensSnapshot {
+        screens: vec![
+            Screen::RelicRewards,
+            Screen::Other {
+                asset_path: "/Lotus/Interface/Unknown.swf".into(),
+            },
+        ],
+    };
+    let choice = RelicRewardChoice {
+        item_key: ItemKey::new("/Lotus/StoreItems/Types/Recipes/Weapons/ExampleBlueprint")?,
+    };
+    let rewards = RelicRewardsSnapshot {
+        account_id: AccountId::new(ACCOUNT_ID)?,
+        picker: RelicRewardPicker::Open {
+            choices: vec![choice.clone(), choice],
+        },
+    };
+    test.publish_payload(
+        "warframe.screens",
+        Some(serde_json::to_value(&screens)?),
+        false,
+    )?;
+    test.publish_payload(
+        "warframe.relic_rewards",
+        Some(serde_json::to_value(&rewards)?),
+        false,
+    )?;
+    let screen_data = decode_screens(next_snapshot(&screens_sub).await?)?;
+    let relic_data = decode_relic_rewards(next_snapshot(&relic_sub).await?)?;
+    assert_eq!(screen_data.data, screens);
+    assert_eq!(relic_data.data, rewards);
+    let session = &screen_data.metadata.source.session;
+    assert_eq!(raw.screens_snapshot(session).await?.data, screens);
+    assert_eq!(raw.relic_rewards_snapshot(session).await?.data, rewards);
+
+    let client = sdk::connect(test.ticket()).await?;
+    let game = client.warframe().single_session().await?;
+    let watch = game.relic_rewards().watch().await?;
+    let concrete = next_relic_snapshot(&watch).await?;
+    assert_eq!(concrete, sdk::WarframeRelicRewards::from(relic_data));
+    assert_eq!(
+        game.screens().read().await?,
+        sdk::WarframeScreens::from(screen_data.clone())
+    );
+    assert_eq!(game.relic_rewards().cached().await?, Some(concrete.clone()));
+    let mut envelope: sdk::DataEnvelope = wire::DataEnvelope {
+        metadata: screen_data.metadata.clone(),
+        payload: wire::JsonPayload::from_value(&serde_json::to_value(&screens)?)?,
+    }
+    .into();
+    assert_eq!(
+        sdk::WarframeScreens::from_envelope(envelope.clone())?.screens,
+        screens.screens
+    );
+    envelope.metadata.source.topic.schema_version = 2;
+    assert!(sdk::WarframeScreens::from_envelope(envelope).is_err());
+
+    test.publish_payload("warframe.relic_rewards", None, false)?;
+    assert!(matches!(
+        timeout(Duration::from_secs(5), watch.next()).await??,
+        Some(sdk::RelicRewardsState::Unavailable { .. })
+    ));
+    assert_eq!(raw.screens_snapshot(session).await?.data, screens);
+    test.publish_payload(
+        "warframe.relic_rewards",
+        Some(serde_json::json!({ "account_id": ACCOUNT_ID, "picker": "Closed" })),
+        true,
+    )?;
+    let closed = next_relic_snapshot(&watch).await?;
+    assert_eq!(game.relic_rewards().read().await?, closed);
+    assert_eq!(closed.picker, sdk::RelicRewardPicker::Closed);
+    assert!(
+        closed.metadata.generation.parse::<u64>()? > concrete.metadata.generation.parse::<u64>()?
+    );
+    watch.shutdown().await?;
+    client.shutdown().await?;
+    screens_sub.close();
+    relic_sub.close();
+    raw.close().await;
+    test.close().await
+}
+
+#[tokio::test]
+async fn screen_and_relic_watches_release_demand_and_closed_reads_complete() -> anyhow::Result<()> {
+    use sdk::TryStreamExt as _;
+    let test = TestWarframe::start().await?;
+    let client = sdk::connect(test.ticket()).await?;
+    let game = client.warframe().single_session().await?;
+    let screens = game.screens();
+    let relic = game.relic_rewards();
+    assert!(screens.cached().await?.is_none());
+    assert!(relic.cached().await?.is_none());
+    let first = screens.watch().await?;
+    let mut stream = screens.watch().await?.into_stream();
+    demand(&test, 1).await?;
+    assert!(matches!(
+        stream.try_next().await?,
+        Some(sdk::ScreensState::Waiting)
+    ));
+    test.publish_payload(
+        "warframe.screens",
+        Some(serde_json::json!({ "screens": [] })),
+        false,
+    )?;
+    assert!(
+        matches!(stream.try_next().await?, Some(sdk::ScreensState::Ready { value }) if value.screens.is_empty())
+    );
+    drop(stream);
+    demand(&test, 1).await?;
+    first.cancel();
+    demand(&test, 0).await?;
+    assert!(first.next().await?.is_none());
+    assert!(first.current().is_err());
+    let (result, published) = tokio::join!(relic.read(), async {
+        demand(&test, 1).await?;
+        test.publish_payload(
+            "warframe.relic_rewards",
+            Some(serde_json::json!({ "account_id": ACCOUNT_ID, "picker": "Closed" })),
+            false,
+        )
+    });
+    published?;
+    assert_eq!(result?.picker, sdk::RelicRewardPicker::Closed);
+    demand(&test, 0).await?;
+    let mut read = Box::pin(relic.read());
+    tokio::select! {
+        result = &mut read => anyhow::bail!("read unexpectedly completed: {result:?}"),
+        result = demand(&test, 1) => result?,
+    }
+    drop(read);
+    demand(&test, 0).await?;
+    let watch = relic.watch().await?;
+    demand(&test, 1).await?;
+    watch.cancel();
+    watch.shutdown().await?;
+    demand(&test, 0).await?;
+    assert!(watch.next().await?.is_none());
+    client.shutdown().await?;
+    test.close().await
+}
+
 #[tokio::test]
 async fn shared_sdk_selects_sessions_explicitly_and_never_retargets_stale_handles()
 -> anyhow::Result<()> {

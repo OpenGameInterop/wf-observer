@@ -87,6 +87,26 @@ pub struct WarframeSession {
 }
 #[boltffi::export]
 impl WarframeSession {
+    /// Creates an inactive screen handle. Screens are independent of login state.
+    #[must_use]
+    pub fn screens(&self) -> crate::api::ScreensCapability {
+        crate::api::ScreensCapability::new(
+            crate::raw::Capability::<crate::warframe::ScreensTopic>::new(
+                self.client.clone(),
+                self.info.session.clone(),
+            ),
+        )
+    }
+    /// Creates an inactive relic picker handle. A read returns the current state,
+    /// including Closed; use a watch to wait for the picker to open.
+    #[must_use]
+    pub fn relic_rewards(&self) -> crate::api::RelicRewardsCapability {
+        crate::api::RelicRewardsCapability::new(crate::raw::Capability::<
+            crate::warframe::RelicRewardsTopic,
+        >::new(
+            self.client.clone(), self.info.session.clone()
+        ))
+    }
     /// Captured session identity and process metadata.
     #[must_use]
     pub fn info(&self) -> SessionInfo {

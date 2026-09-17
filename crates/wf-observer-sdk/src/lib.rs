@@ -87,6 +87,11 @@ pub use api::{
     WarframeChatEvent, WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession,
     connect, connect_local, create_identity, load_identity, restore_identity,
 };
+pub use api::{
+    RelicRewardChoice, RelicRewardPicker, RelicRewardsCapability, RelicRewardsState,
+    RelicRewardsWatch, Screen, ScreensCapability, ScreensState, ScreensWatch, WarframeRelicRewards,
+    WarframeScreens,
+};
 pub use n0_future::{Stream, StreamExt, TryStreamExt};
 
 /// Generic protocol and custom-topic APIs. Most applications use the concrete

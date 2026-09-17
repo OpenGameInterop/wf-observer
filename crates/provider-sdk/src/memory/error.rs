@@ -33,6 +33,11 @@ pub enum ReadError {
         #[error(not(source))]
         at: &'static str,
     },
+    /// target data at {at} is not ready
+    NotReady {
+        #[error(not(source))]
+        at: &'static str,
+    },
     /// target data at {at} changed during acquisition
     Unstable {
         #[error(not(source))]
@@ -63,7 +68,7 @@ impl From<RecordError> for ReadError {
 impl From<&ReadError> for UnavailableReason {
     fn from(error: &ReadError) -> Self {
         match error {
-            ReadError::Unstable { .. } => Self::TargetNotReady,
+            ReadError::NotReady { .. } | ReadError::Unstable { .. } => Self::TargetNotReady,
             ReadError::Memory(MemoryError::Read(_)) => Self::ReadFailed {
                 message: "target memory could not be read".into(),
             },
@@ -85,6 +90,12 @@ impl ReadError {
     #[must_use]
     pub const fn invalid(at: &'static str) -> Self {
         Self::InvalidData { at }
+    }
+
+    /// Labels an expected value that the target has not populated yet.
+    #[must_use]
+    pub const fn not_ready(at: &'static str) -> Self {
+        Self::NotReady { at }
     }
 
     /// Labels data that changed during acquisition.

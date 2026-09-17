@@ -12,6 +12,8 @@ pub mod inventory;
 mod item_key;
 pub mod player;
 mod player_name;
+pub mod relic_rewards;
+pub mod screens;
 
 pub use account_id::{AccountId, InvalidAccountId};
 pub use chat::{ChatChannel, ChatEvent, ChatMessage, ChatTime, ChatUpdate};
@@ -23,3 +25,5 @@ pub use inventory::{
 pub use item_key::{InvalidItemKey, ItemKey};
 pub use player::PlayerSnapshot;
 pub use player_name::{InvalidPlayerName, PlayerName};
+pub use relic_rewards::{RelicRewardChoice, RelicRewardPicker, RelicRewardsSnapshot};
+pub use screens::{Screen, ScreensSnapshot};

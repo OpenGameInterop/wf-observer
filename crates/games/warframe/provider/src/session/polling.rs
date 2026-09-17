@@ -1,15 +1,14 @@
-use super::validation::{CachedCheck, Executable, Retry, identify};
+use super::validation::{CachedCheck, Executable, Retry, SharedLayouts, identify};
 use crate::{
-    item_type::{self, ItemTypeCache, facts::ITEM_TYPES},
+    item_type::ItemTypeCache,
     roots::{self, LoginIdentity, LoginResolution},
-    string_pool::{self, StringTokenCache, facts::STRINGS},
-    target::READ_LIMITS,
+    string_pool::StringTokenCache,
     topics,
 };
 use memory_reader::ProcessMemory;
 use provider_sdk::{
     CapabilityDescriptor, CapabilityHealth, PollContext, PollResult, ProviderError,
-    ProviderSession, SnapshotDelivery, UnavailableReason, memory::TargetReader,
+    ProviderSession, SnapshotDelivery, UnavailableReason,
 };
 use std::time::Duration;
 use warframe_model::{ChatEvent, CurrencySnapshot, InventorySnapshot, PlayerSnapshot};
@@ -52,11 +51,10 @@ pub(crate) static CHAT: CapabilityDescriptor = CapabilityDescriptor {
 
 #[derive(Default)]
 pub(crate) struct WarframeSession {
+    visual: super::visual::VisualTopics,
     executable: CachedCheck<Executable>,
     build_name: Option<String>,
-    login_layout: CachedCheck,
-    string_layout: CachedCheck,
-    item_layout: CachedCheck,
+    layouts: SharedLayouts,
     inventory: TopicState,
     currencies: TopicState,
     player: TopicState,
@@ -92,6 +90,7 @@ impl TopicState {
 
 impl ProviderSession for WarframeSession {
     fn begin_generation(&mut self, cap: &CapabilityDescriptor) {
+        self.visual.wake(cap);
         if cap.topic == CHAT.topic {
             self.clear_chat();
         }
@@ -103,6 +102,7 @@ impl ProviderSession for WarframeSession {
     }
 
     fn poll_completed(&mut self, committed: bool) {
+        self.visual.poll_completed(committed);
         if let Some((history, cursor)) = self.pending_chat.take() {
             if committed {
                 if let Some(history) = history {
@@ -120,6 +120,26 @@ impl ProviderSession for WarframeSession {
     }
 
     fn poll(&mut self, context: &mut PollContext<'_>) -> Result<PollResult, ProviderError> {
+        self.visual.demand(context);
+        if self.visual.due(context.now) {
+            match self
+                .executable
+                .ensure(context.now, || identify(context.memory))
+            {
+                Ok(image) => {
+                    self.build_name
+                        .get_or_insert_with(|| image.actual.to_string());
+                    self.visual.poll(
+                        context,
+                        image,
+                        &mut self.items,
+                        &mut self.strings,
+                        &mut self.layouts,
+                    )?;
+                }
+                Err(retry) => self.visual.unavailable(context, &retry)?,
+            }
+        }
         for (cap, topic) in self.account_topics() {
             let demanded = context.demand.iter().any(|wanted| {
                 wanted.topic == cap.topic && wanted.schema_version == cap.schema_version
@@ -135,7 +155,7 @@ impl ProviderSession for WarframeSession {
             .any(|(_, topic)| topic.demanded)
         {
             self.login = None;
-            return Ok(PollResult::Idle);
+            return Ok(self.schedule(context.now));
         }
         if self
             .account_topics()
@@ -148,7 +168,7 @@ impl ProviderSession for WarframeSession {
                 .and_then(|image| {
                     self.build_name
                         .get_or_insert_with(|| image.actual.to_string());
-                    self.login_layout.validate(context.now, "login", || {
+                    self.layouts.login.validate(context.now, "login", || {
                         roots::validate_login_layout(
                             context.memory,
                             image.base,
@@ -187,10 +207,12 @@ impl WarframeSession {
     }
 
     fn schedule(&mut self, now: Duration) -> PollResult {
+        let visual = self.visual.deadline().map(|at| at.saturating_sub(now));
         self.account_topics()
             .into_iter()
             .filter(|(_, topic)| topic.demanded)
             .map(|(_, topic)| topic.next_poll.saturating_sub(now))
+            .chain(visual)
             .min()
             .map_or(PollResult::Idle, PollResult::After)
     }
@@ -402,16 +424,7 @@ impl WarframeSession {
         image: Executable,
         now: Duration,
     ) -> Result<(), Retry> {
-        self.string_layout.validate(now, "string pool", || {
-            let mut reader =
-                TargetReader::new(memory, image.base, image.actual.image_size, READ_LIMITS)?;
-            string_pool::validate_string_pool_layout(&mut reader, STRINGS)
-        })?;
-        self.item_layout.validate(now, "item types", || {
-            let mut reader =
-                TargetReader::new(memory, image.base, image.actual.image_size, READ_LIMITS)?;
-            item_type::validate_item_types(&mut reader, ITEM_TYPES)
-        })
+        self.layouts.item_paths(memory, image, now)
     }
 
     fn clear_login(&mut self, context: &mut PollContext<'_>) -> Result<(), ProviderError> {
@@ -574,15 +587,13 @@ mod tests {
         for failed in 0..7 {
             let mut session = WarframeSession {
                 executable: CachedCheck::Passed(image),
-                login_layout: CachedCheck::Passed(()),
-                string_layout: CachedCheck::Passed(()),
-                item_layout: CachedCheck::Passed(()),
+                layouts: SharedLayouts::validated(),
                 ..WarframeSession::default()
             };
             session.inventory.layout = CachedCheck::Passed(());
             let cap = if failed >= 4 {
-                session.string_layout = CachedCheck::Unchecked;
-                session.item_layout = CachedCheck::Unchecked;
+                session.layouts.strings = CachedCheck::Unchecked;
+                session.layouts.items = CachedCheck::Unchecked;
                 match failed {
                     4 => &CURRENCIES,
                     5 => &PLAYER,
@@ -592,9 +603,9 @@ mod tests {
                 &INVENTORY
             };
             let check = match failed {
-                0 => &mut session.login_layout,
-                1 => &mut session.string_layout,
-                2 => &mut session.item_layout,
+                0 => &mut session.layouts.login,
+                1 => &mut session.layouts.strings,
+                2 => &mut session.layouts.items,
                 4 => &mut session.currencies.layout,
                 5 => &mut session.player.layout,
                 6 => &mut session.chat.layout,
@@ -705,8 +716,7 @@ mod tests {
         };
         for blocked in 0..6 {
             let mut session = WarframeSession {
-                string_layout: CachedCheck::Passed(()),
-                item_layout: CachedCheck::Passed(()),
+                layouts: SharedLayouts::validated(),
                 ..WarframeSession::default()
             };
             for (_, topic) in session.account_topics() {
@@ -714,8 +724,8 @@ mod tests {
                 topic.layout = CachedCheck::Passed(());
             }
             let check = match blocked {
-                0 => &mut session.string_layout,
-                1 => &mut session.item_layout,
+                0 => &mut session.layouts.strings,
+                1 => &mut session.layouts.items,
                 2 => &mut session.inventory.layout,
                 3 => &mut session.currencies.layout,
                 4 => &mut session.player.layout,

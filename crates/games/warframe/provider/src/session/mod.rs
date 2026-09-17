@@ -8,6 +8,12 @@
 
 mod health;
 mod polling;
+mod screen_demand;
 mod validation;
+mod visual;
+
+#[cfg(test)]
+mod fixture;
 
 pub(crate) use polling::{CHAT, CURRENCIES, INVENTORY, PLAYER, WarframeSession};
+pub(crate) use visual::{RELIC_REWARDS, SCREENS};

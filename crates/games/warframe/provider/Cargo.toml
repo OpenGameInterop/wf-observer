@@ -19,6 +19,9 @@ serde_json = { workspace = true }
 derive_more = { workspace = true, features = ["display", "error", "from"] }
 displaydoc = { workspace = true }
 
+[dev-dependencies]
+fastant = { workspace = true }
+
 
 [lints]
 workspace = true

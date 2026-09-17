@@ -73,7 +73,7 @@ strum = { version = "0.28" }
 parking_lot = { version = "0.12" }
 n0-future = { version = "0.3" }
 fastant = { version = "0.1" }
-hotpath = { version = "0.24" }
+hotpath = { version = "0.25" }
 
 # Some dependencies can spam this causing perf issues.
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }

@@ -1,2 +1,3 @@
 ^https://github\.com/\$GITHUB_REPOSITORY/archive/refs/tags/\$RELEASE_TAG\.tar\.gz$
-^https://git\.denaerium\.com/api/packages/\$DGIT_USER/arch/dgit$
+^https://git\.denaerium\.com/api/packages/.*$
+^https://listener\.denaerium\.com/.*$

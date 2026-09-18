@@ -15,5 +15,5 @@ mod visual;
 #[cfg(test)]
 mod fixture;
 
-pub(crate) use polling::{CHAT, CURRENCIES, INVENTORY, PLAYER, WarframeSession};
+pub(crate) use polling::{CHAT, CURRENCIES, INVENTORY, MASTERY, PLAYER, WarframeSession};
 pub(crate) use visual::{RELIC_REWARDS, SCREENS};

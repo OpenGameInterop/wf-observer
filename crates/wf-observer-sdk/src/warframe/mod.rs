@@ -2,6 +2,7 @@
 mod chat;
 mod currencies;
 mod inventory;
+mod mastery;
 mod player;
 mod relic_rewards;
 mod screens;
@@ -9,6 +10,7 @@ mod screens;
 pub use chat::{ChatTopic, decode_chat};
 pub use currencies::{CurrenciesTopic, decode_currencies};
 pub use inventory::{InventoryTopic, decode_inventory};
+pub use mastery::{MasteryTopic, decode_mastery};
 pub use player::{PlayerTopic, decode_player};
 pub use relic_rewards::{RelicRewardsTopic, decode_relic_rewards};
 pub use screens::{ScreensTopic, decode_screens};
@@ -18,6 +20,7 @@ pub use warframe_model::{
     InventoryFamilySnapshot, InventoryItemCount, InventorySnapshot, ItemKey, PlayerName,
     PlayerSnapshot,
 };
+pub use warframe_model::{InvalidMastery, MasteryItemProgress, MasterySnapshot};
 pub use warframe_model::{
     RelicRewardChoice, RelicRewardPicker, RelicRewardsSnapshot, Screen, ScreensSnapshot,
 };

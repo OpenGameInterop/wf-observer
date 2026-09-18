@@ -10,6 +10,7 @@ pub mod chat;
 pub mod currencies;
 pub mod inventory;
 mod item_key;
+pub mod mastery;
 pub mod player;
 mod player_name;
 pub mod relic_rewards;
@@ -23,6 +24,7 @@ pub use inventory::{
     InventorySnapshot,
 };
 pub use item_key::{InvalidItemKey, ItemKey};
+pub use mastery::{InvalidMastery, MasteryItemProgress, MasterySnapshot};
 pub use player::PlayerSnapshot;
 pub use player_name::{InvalidPlayerName, PlayerName};
 pub use relic_rewards::{RelicRewardChoice, RelicRewardPicker, RelicRewardsSnapshot};

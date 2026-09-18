@@ -20,11 +20,13 @@
 mod chat;
 mod currencies;
 mod inventory;
+mod mastery;
 mod player;
 
 pub(crate) use chat::{ChatCursor, History as ChatHistory, read_chat, validate_chat_layout};
 pub(crate) use currencies::{read_currencies, validate_currencies_layout};
 pub(crate) use inventory::{InventoryError, read_inventory, validate_inventory_layout};
+pub(crate) use mastery::{MasteryError, read_mastery, validate_mastery_layout};
 pub(crate) use player::{read_player, validate_player_layout};
 pub(crate) mod relic_rewards;
 pub(crate) mod screens;

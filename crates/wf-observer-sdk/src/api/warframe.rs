@@ -87,6 +87,17 @@ pub struct WarframeSession {
 }
 #[boltffi::export]
 impl WarframeSession {
+    /// Creates an inactive mastery handle; retaining it does not acquire data.
+    #[must_use]
+    pub fn mastery(&self) -> crate::api::MasteryCapability {
+        crate::api::MasteryCapability::new(
+            crate::raw::Capability::<crate::warframe::MasteryTopic>::new(
+                self.client.clone(),
+                self.info.session.clone(),
+            ),
+        )
+    }
+
     /// Creates an inactive screen handle. Screens are independent of login state.
     #[must_use]
     pub fn screens(&self) -> crate::api::ScreensCapability {

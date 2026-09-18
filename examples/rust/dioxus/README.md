@@ -24,6 +24,8 @@ supported running game; account topics additionally require a logged-in account.
 The showcase shows player identity, all four currency balances, searchable and
 paged inventory, live chat with channel filtering and game-local timestamps,
 visible screens, and the current relic picker with ordered StoreItem keys.
+The mastery panel shows completed rank, total/item mastery points, and searchable,
+paged retained affinity by canonical item path.
 Choose one process. Each panel can be independently unmounted to
 release its subscription. Mount it again to resume after a terminal error.
 The chat view retains its latest 200 events and marks source-continuity gaps.

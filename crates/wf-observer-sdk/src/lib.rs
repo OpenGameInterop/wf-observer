@@ -56,6 +56,19 @@
 //! ```
 //! `WarframeInventory::from_envelope(envelope)` exposes the same conversion to
 //! generated bindings. Currencies, player data, and chat provide it too.
+//!
+//! Mastery exposes the game's completed rank, point totals and raw retained affinity:
+//! ```no_run
+//! # async fn mastery(game: wf_observer_sdk::WarframeSession) -> Result<(), wf_observer_sdk::ObserverError> {
+//! let value = game.mastery().read().await?;
+//! println!("Rank {}: {} mastery points", value.rank, value.total_points);
+//! let mut updates = game.mastery().watch().await?.into_stream();
+//! # Ok(()) }
+//! ```
+//! `WarframeMastery::from_envelope` validates generic snapshots. Point totals and
+//! affinity are exact unsigned integers in typed clients and decimal strings in
+//! raw JSON. Per-item affinity can exceed maximum-rank thresholds; item metadata
+//! supplies the rules for deriving item rank and completion.
 
 #[macro_use(derive)]
 extern crate derive_aliases;
@@ -86,6 +99,9 @@ pub use api::{
     TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe,
     WarframeChatEvent, WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession,
     connect, connect_local, create_identity, load_identity, restore_identity,
+};
+pub use api::{
+    MasteryCapability, MasteryItemProgress, MasteryState, MasteryWatch, WarframeMastery,
 };
 pub use api::{
     RelicRewardChoice, RelicRewardPicker, RelicRewardsCapability, RelicRewardsState,

@@ -23,6 +23,9 @@ use wf_observer_sdk::raw::{
 const ACCOUNT_ID: &str = "0123456789abcdef01234567";
 const OTHER_ACCOUNT_ID: &str = "abcdef0123456789abcdef01";
 
+#[path = "mastery_tests.rs"]
+mod mastery_tests;
+
 struct TestWarframe {
     state: ServiceState,
     server: Server,

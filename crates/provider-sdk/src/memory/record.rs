@@ -46,6 +46,18 @@ impl<'a> RecordView<'a> {
             .ok_or(RecordError::OutOfBounds { at: self.at })
     }
 
+    /// Decodes one little-endian 16-bit field, including unaligned fields.
+    ///
+    /// # Errors
+    /// Rejects a field not wholly contained in the record.
+    pub fn u16(self, offset: ObjectOffset) -> Result<u16, RecordError> {
+        Ok(u16::from_le_bytes(
+            self.field(offset, 2)?
+                .try_into()
+                .map_err(|_| RecordError::OutOfBounds { at: self.at })?,
+        ))
+    }
+
     /// Decodes one little-endian 32-bit field, including unaligned fields.
     ///
     /// # Errors
@@ -85,6 +97,8 @@ mod tests {
         let record = RecordView::new(&bytes, "test record");
         assert_eq!(record.u64(ObjectOffset::new(1))?, value);
         assert_eq!(record.u32(ObjectOffset::new(5))?, 0x0123_4567);
+        assert_eq!(record.u16(ObjectOffset::new(3))?, 0x89ab);
+        assert!(record.u16(ObjectOffset::new(8)).is_err());
         assert!(record.field(ObjectOffset::new(9), 0)?.is_empty());
         assert!(matches!(
             record.u64(ObjectOffset::new(2)),

@@ -4,6 +4,7 @@ use super::{
     ObserverError, PlayerState, PlayerWatch, RelicRewardsState, RelicRewardsWatch, ScreensState,
     ScreensWatch,
 };
+use super::{MasteryState, MasteryWatch};
 
 macro_rules! impl_stream {
     ($watch:ty, $item:ty) => {
@@ -27,6 +28,7 @@ macro_rules! impl_stream {
 impl_stream!(CurrenciesWatch, CurrenciesState);
 impl_stream!(PlayerWatch, PlayerState);
 impl_stream!(InventoryWatch, InventoryState);
+impl_stream!(MasteryWatch, MasteryState);
 impl_stream!(ChatWatch, ChatObservation);
 impl_stream!(ScreensWatch, ScreensState);
 impl_stream!(RelicRewardsWatch, RelicRewardsState);

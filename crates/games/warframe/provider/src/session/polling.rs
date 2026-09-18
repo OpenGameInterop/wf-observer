@@ -11,15 +11,28 @@ use provider_sdk::{
     ProviderSession, SnapshotDelivery, UnavailableReason,
 };
 use std::time::Duration;
-use warframe_model::{ChatEvent, CurrencySnapshot, InventorySnapshot, PlayerSnapshot};
+use warframe_model::{
+    ChatEvent, CurrencySnapshot, InventorySnapshot, MasterySnapshot, PlayerSnapshot,
+};
 
 #[cfg(test)]
 #[path = "acquisition_tests.rs"]
 mod acquisition_tests;
 
+#[cfg(test)]
+#[path = "mastery_tests.rs"]
+mod mastery_tests;
+
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const CHAT_INTERVAL: Duration = Duration::from_millis(250);
 const CHAT_BACKLOG_INTERVAL: Duration = Duration::from_millis(25);
+
+pub(crate) static MASTERY: CapabilityDescriptor = CapabilityDescriptor {
+    topic: "warframe.mastery",
+    schema_version: 1,
+    snapshots: Some(SnapshotDelivery::Delta),
+    events: false,
+};
 
 pub(crate) static INVENTORY: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.inventory",
@@ -56,6 +69,7 @@ pub(crate) struct WarframeSession {
     build_name: Option<String>,
     layouts: SharedLayouts,
     inventory: TopicState,
+    mastery: TopicState,
     currencies: TopicState,
     player: TopicState,
     chat: TopicState,
@@ -197,12 +211,13 @@ impl ProviderSession for WarframeSession {
 
 impl WarframeSession {
     /// These topics share login ownership, but have independent layouts and deadlines.
-    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 4] {
+    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 5] {
         [
             (&INVENTORY, &mut self.inventory),
             (&CURRENCIES, &mut self.currencies),
             (&PLAYER, &mut self.player),
             (&CHAT, &mut self.chat),
+            (&MASTERY, &mut self.mastery),
         ]
     }
 
@@ -263,6 +278,10 @@ impl WarframeSession {
             topics::read_currencies(context.memory, image.base, image.actual.image_size, &before)
                 .map_err(|error| read_retry(&error, context.now, CURRENCIES.topic))
         });
+        let mastery = self
+            .mastery
+            .due(context.now)
+            .then(|| self.sample_mastery(context, image, &before));
         let player = self.player.due(context.now).then(|| {
             topics::read_player(context.memory, image.base, image.actual.image_size, &before)
                 .map_err(|error| read_retry(&error, context.now, PLAYER.topic))
@@ -293,7 +312,7 @@ impl WarframeSession {
                 },
             );
         }
-        self.publish(context, inventory, currencies, player)?;
+        self.publish(context, inventory, currencies, player, mastery)?;
         match chat {
             Some(Ok(history)) => {
                 let current = history
@@ -331,10 +350,12 @@ impl WarframeSession {
         inventory: Option<Result<InventorySnapshot, Retry>>,
         currencies: Option<Result<CurrencySnapshot, Retry>>,
         player: Option<Result<PlayerSnapshot, Retry>>,
+        mastery: Option<Result<MasterySnapshot, Retry>>,
     ) -> Result<(), ProviderError> {
         snapshot(context, &INVENTORY, &mut self.inventory, inventory)?;
         snapshot(context, &CURRENCIES, &mut self.currencies, currencies)?;
-        snapshot(context, &PLAYER, &mut self.player, player)
+        snapshot(context, &PLAYER, &mut self.player, player)?;
+        snapshot(context, &MASTERY, &mut self.mastery, mastery)
     }
 
     fn sample_inventory(
@@ -360,6 +381,29 @@ impl WarframeSession {
         })
     }
 
+    fn sample_mastery(
+        &mut self,
+        context: &mut PollContext<'_>,
+        image: Executable,
+        login: &LoginIdentity,
+    ) -> Result<MasterySnapshot, Retry> {
+        topics::read_mastery(
+            context.memory,
+            image.base,
+            image.actual.image_size,
+            login,
+            &mut self.items,
+            &mut self.strings,
+        )
+        .map_err(|error| {
+            tracing::debug!(%error, "mastery acquisition unavailable");
+            Retry {
+                reason: (&error).into(),
+                at: context.now.saturating_add(SAMPLE_INTERVAL),
+            }
+        })
+    }
+
     /// Failed validation updates that topic's health; compatible topics remain due for acquisition.
     fn validate_due(
         &mut self,
@@ -369,6 +413,10 @@ impl WarframeSession {
         if self.inventory.due(context.now) {
             let ready = self
                 .validate_item_paths(context.memory, image, context.now)
+                .and_then(|()| {
+                    self.layouts
+                        .inventory_owner(context.memory, image, context.now)
+                })
                 .and_then(|()| {
                     self.inventory
                         .layout
@@ -382,6 +430,28 @@ impl WarframeSession {
                 });
             if let Err(retry) = ready {
                 unavailable(context, &INVENTORY, &mut self.inventory, retry)?;
+            }
+        }
+        if self.mastery.due(context.now) {
+            let ready = self
+                .validate_item_paths(context.memory, image, context.now)
+                .and_then(|()| {
+                    self.layouts
+                        .inventory_owner(context.memory, image, context.now)
+                })
+                .and_then(|()| {
+                    self.mastery
+                        .layout
+                        .validate(context.now, MASTERY.topic, || {
+                            topics::validate_mastery_layout(
+                                context.memory,
+                                image.base,
+                                image.actual.image_size,
+                            )
+                        })
+                });
+            if let Err(retry) = ready {
+                unavailable(context, &MASTERY, &mut self.mastery, retry)?;
             }
         }
         if self.currencies.due(context.now) {
@@ -690,14 +760,17 @@ mod tests {
                 CURRENCIES.topic,
                 PLAYER.topic,
                 CHAT.topic,
+                MASTERY.topic,
                 CURRENCIES.topic,
                 PLAYER.topic,
-                CHAT.topic
+                CHAT.topic,
+                MASTERY.topic
             ]
         );
         session.currencies.demand(false, now);
         session.player.demand(false, now);
         session.chat.demand(false, now);
+        session.mastery.demand(false, now);
         assert_eq!(session.schedule(now), PollResult::Idle);
         Ok(())
     }
@@ -735,7 +808,7 @@ mod tests {
             let mut events = Sink::default();
             let mut health = Sink::default();
             let mut context = PollContext {
-                demand: &[&INVENTORY, &CURRENCIES, &PLAYER, &CHAT],
+                demand: &[&INVENTORY, &CURRENCIES, &PLAYER, &CHAT, &MASTERY],
                 now: Duration::ZERO,
                 memory: &mut NoReads,
                 events: &mut events,
@@ -788,6 +861,7 @@ mod tests {
                     Ok(currencies)
                 }),
                 None,
+                None,
             )?;
             let (healthy, broken) = if blocked == 3 {
                 (&INVENTORY, &CURRENCIES)
@@ -797,10 +871,8 @@ mod tests {
             assert_eq!(events.snapshots.len(), 1);
             assert_eq!(events.snapshots[0].0, healthy.topic);
             assert!(
-                health
-                    .health
-                    .iter()
-                    .all(|(topic, _)| *topic == broken.topic)
+                health.health.iter().all(|(topic, _)| *topic == broken.topic
+                    || (blocked <= 1 && *topic == MASTERY.topic))
             );
         }
         Ok(())

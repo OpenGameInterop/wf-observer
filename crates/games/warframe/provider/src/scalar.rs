@@ -1,4 +1,4 @@
-//! Address-bound scalar encoding used by inventory counts and account balances.
+//! Address-bound scalar encoding used by inventory counts and account progression.
 
 use provider_sdk::memory::ObjectOffset;
 
@@ -12,6 +12,30 @@ pub(crate) struct AddressEncodedScalarFacts {
     pub(crate) address_shift: u32,
     pub(crate) value_xor: u32,
     pub(crate) check_xor: u32,
+}
+
+/// Sixteen-bit protected scalar used by completed mastery rank.
+#[derive(Debug, ..Copy, ..Eq)]
+pub(crate) struct AddressEncodedU16Facts {
+    pub(crate) check: ObjectOffset,
+    pub(crate) stored: ObjectOffset,
+    pub(crate) rotate_left: u32,
+    pub(crate) address_shift: u32,
+    pub(crate) value_xor: u16,
+    pub(crate) check_xor: u16,
+}
+
+impl AddressEncodedU16Facts {
+    /// `stored_address` is the original address in game memory, before copying.
+    pub(crate) fn decode(self, check: u16, stored: u16, stored_address: u64) -> Option<u16> {
+        if self.rotate_left >= u16::BITS || self.address_shift >= u64::BITS {
+            return None;
+        }
+        let [a, b, ..] = (stored_address >> self.address_shift).to_le_bytes();
+        (check == stored ^ self.check_xor).then(|| {
+            stored.rotate_left(self.rotate_left) ^ u16::from_le_bytes([a, b]) ^ self.value_xor
+        })
+    }
 }
 
 impl AddressEncodedScalarFacts {

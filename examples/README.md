@@ -1,7 +1,7 @@
 # Examples
 
 The [Dioxus showcase](rust/dioxus) displays player details, currencies,
-inventory, chat, screens, relic rewards, and service status through typed SDK watches.
+inventory, mastery, chat, screens, relic rewards, and service status through typed SDK watches.
 
 Each console example connects, selects the single Warframe session, reads its
 currency balances, and shuts down the client using a generated binding.

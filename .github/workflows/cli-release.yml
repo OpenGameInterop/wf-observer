@@ -389,6 +389,44 @@ jobs:
 
           mapfile -t assets < <(find release-assets -maxdepth 1 -type f | sort)
           gh release create "$RELEASE_TAG" "${assets[@]}" "${arguments[@]}"
+      - name: Signal DGit's listener
+        continue-on-error: true
+        shell: bash
+        env:
+          DGIT_SIGNAL_SECRET: ${{ secrets.WF_OBSERVER_SIGNAL_SECRET }}
+        run: |
+          if [[ -z "$DGIT_SIGNAL_SECRET" ]]; then
+            echo "::error::WF_OBSERVER_SIGNAL_SECRET is not configured"
+            exit 1
+          fi
+
+          response="$(mktemp)"
+          trap 'rm -f "$response"' EXIT
+
+          if ! http_status="$(
+            curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --output "$response" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer $DGIT_SIGNAL_SECRET" \
+              "https://listener.denaerium.com/signal/wf-observer-bin"
+          )"; then
+            echo "::error::could not reach dgit-listener (network/TLS failure)"
+            exit 1
+          fi
+
+          body="$(cat "$response")"
+
+          if [[ "$http_status" == 2* ]]; then
+            echo "Signal accepted (HTTP $http_status): $body"
+          else
+            echo "::error::signal rejected (HTTP $http_status): $body"
+            exit 1
+          fi
+
+
 
   publish-aur:
     name: Publish CLI packages to the AUR
@@ -499,100 +537,6 @@ jobs:
               --message "Update to $VERSION"
             runuser -u publisher -- git -C "$repository" push origin HEAD:master
           done
-
-  publish-dgit:
-    name: Publish CLI package to DGit
-    if: >-
-      github.event_name == 'push' &&
-      github.ref_type == 'tag' &&
-      !contains(needs.metadata.outputs.version, '-')
-    needs: [metadata, package-metadata, publish]
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    container:
-      image: archlinux:base-devel
-
-    steps:
-      - name: Install packaging tools
-        run: |
-          pacman-key --init
-          pacman --sync --refresh --sysupgrade --needed --noconfirm curl
-
-      - name: Download package metadata
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: cli-package-metadata
-          path: package-metadata
-
-      - name: Create publisher user
-        run: useradd --create-home publisher
-
-      - name: Build wf-observer-bin archive
-        shell: bash
-        run: |
-          repository=/tmp/dgit/wf-observer-bin
-          install --directory --owner=publisher --group=publisher /tmp/dgit "$repository"
-          install \
-            --owner=publisher \
-            --group=publisher \
-            --mode=644 \
-            package-metadata/aur/wf-observer-bin/PKGBUILD \
-            "$repository/PKGBUILD"
-
-          # $1 expands in the child shell.
-          # shellcheck disable=SC2016
-          runuser -u publisher -- bash -c '
-            set -euo pipefail
-            cd "$1"
-            makepkg --noconfirm
-          ' _ "$repository"
-
-      - name: Upload wf-observer-bin archive to DGit
-        continue-on-error: true
-        shell: bash
-        env:
-          DGIT_USER: ${{ secrets.DGIT_USER }}
-          DGIT_PASSWORD: ${{ secrets.DGIT_PASSWORD }}
-        run: |
-          if [[ -z "$DGIT_USER" || -z "$DGIT_PASSWORD" ]]; then
-            echo "::error::DGIT_USER or DGIT_PASSWORD is not configured"
-            exit 1
-          fi
-
-          read -r pkg_version pkg_release pkg_arch < <(
-            bash -c 'source "$1"; printf "%s %s %s" "$pkgver" "$pkgrel" "${arch[0]}"' \
-              _ /tmp/dgit/wf-observer-bin/PKGBUILD
-          )
-          package="/tmp/dgit/wf-observer-bin/wf-observer-bin-$pkg_version-$pkg_release-$pkg_arch.pkg.tar.zst"
-          if [[ ! -f "$package" ]]; then
-            echo "::error::expected package file not found: $package"
-            exit 1
-          fi
-
-          response="$(mktemp)"
-          set +e
-          status="$(curl \
-            --silent \
-            --show-error \
-            --output "$response" \
-            --write-out '%{http_code}' \
-            --request PUT \
-            --user "$DGIT_USER:$DGIT_PASSWORD" \
-            --header 'Content-Type: application/octet-stream' \
-            --data-binary "@$package" \
-            "https://git.denaerium.com/api/packages/$DGIT_USER/arch/dgit")"
-          curl_exit=$?
-          set -e
-
-          if [[ "$curl_exit" -ne 0 ]]; then
-            echo "::error::failed to reach the DGit package registry (curl exit $curl_exit)"
-            exit 1
-          elif [[ "$status" == "409" ]]; then
-            echo "wf-observer-bin $package is already present on DGit"
-          elif [[ "$status" != 2* ]]; then
-            echo "::error::failed to upload $package to the DGit package registry (HTTP $status): $(cat "$response")"
-            exit 1
-          fi
 
   publish-scoop:
     name: Publish CLI package to Scoop

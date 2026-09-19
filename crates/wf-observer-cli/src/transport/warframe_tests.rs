@@ -26,6 +26,9 @@ const OTHER_ACCOUNT_ID: &str = "abcdef0123456789abcdef01";
 #[path = "mastery_tests.rs"]
 mod mastery_tests;
 
+#[path = "progression_tests.rs"]
+mod progression_tests;
+
 struct TestWarframe {
     state: ServiceState,
     server: Server,

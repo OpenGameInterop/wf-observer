@@ -19,14 +19,23 @@
 
 mod chat;
 mod currencies;
+mod intrinsics;
 mod inventory;
 mod mastery;
 mod player;
+mod star_chart;
+
+#[cfg(test)]
+pub(crate) mod progression_tests;
+#[cfg(test)]
+mod progression_windows;
 
 pub(crate) use chat::{ChatCursor, History as ChatHistory, read_chat, validate_chat_layout};
 pub(crate) use currencies::{read_currencies, validate_currencies_layout};
+pub(crate) use intrinsics::{read_intrinsics, validate_intrinsics_layout};
 pub(crate) use inventory::{InventoryError, read_inventory, validate_inventory_layout};
 pub(crate) use mastery::{MasteryError, read_mastery, validate_mastery_layout};
 pub(crate) use player::{read_player, validate_player_layout};
+pub(crate) use star_chart::{read_star_chart, validate_star_chart_layout};
 pub(crate) mod relic_rewards;
 pub(crate) mod screens;

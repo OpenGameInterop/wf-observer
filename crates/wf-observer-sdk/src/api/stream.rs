@@ -32,3 +32,6 @@ impl_stream!(MasteryWatch, MasteryState);
 impl_stream!(ChatWatch, ChatObservation);
 impl_stream!(ScreensWatch, ScreensState);
 impl_stream!(RelicRewardsWatch, RelicRewardsState);
+
+impl_stream!(super::IntrinsicsWatch, super::IntrinsicsState);
+impl_stream!(super::StarChartWatch, super::StarChartState);

@@ -6,7 +6,8 @@ use provider_sdk::{GameDescriptor, Provider, ProviderError, ProviderManifest, Pr
 use crate::{
     matching,
     session::{
-        CHAT, CURRENCIES, INVENTORY, MASTERY, PLAYER, RELIC_REWARDS, SCREENS, WarframeSession,
+        CHAT, CURRENCIES, INTRINSICS, INVENTORY, MASTERY, PLAYER, RELIC_REWARDS, SCREENS,
+        STAR_CHART, WarframeSession,
     },
 };
 
@@ -26,6 +27,8 @@ static MANIFEST: ProviderManifest = ProviderManifest {
         SCREENS,
         RELIC_REWARDS,
         MASTERY,
+        INTRINSICS,
+        STAR_CHART,
     ],
 };
 

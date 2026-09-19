@@ -1,48 +1,19 @@
 //! Instruction windows from Warframe.x64.exe, fingerprint 6a85c6b0-02cef000.
 //! Captured independently of the fact/validation code; no live account data.
 use super::*;
-use memory_reader::{AccessError, MemoryModule, Target};
-use std::collections::BTreeMap;
+use crate::topics::progression_tests::Image;
 
-struct Image {
-    bytes: BTreeMap<u64, u8>,
-}
-impl Image {
-    fn new(base: u64) -> Self {
-        let mut bytes = BTreeMap::new();
-        for &(rva, code) in WINDOWS {
-            bytes.extend((base + u64::from(rva)..).zip(code.iter().copied()));
-        }
-        Self { bytes }
-    }
-}
-impl ProcessMemory for Image {
-    fn target(&self) -> &Target {
-        unreachable!("layout-only fixture")
-    }
-    fn verify(&mut self) -> Result<(), AccessError> {
-        unreachable!("host verifies target")
-    }
-    fn modules(&mut self) -> Result<Vec<MemoryModule>, AccessError> {
-        unreachable!("known image")
-    }
-    fn read_into(&mut self, address: u64, output: &mut [u8]) -> Result<(), AccessError> {
-        let length = output.len();
-        for (at, byte) in (address..).zip(output) {
-            *byte = *self
-                .bytes
-                .get(&at)
-                .ok_or(AccessError::InvalidReadRange { address, length })?;
-        }
-        Ok(())
-    }
+fn observed_image(base: u64) -> Image {
+    let mut image = Image::new(base);
+    image.extend(base, WINDOWS);
+    image
 }
 
 #[test]
 fn observed_layout_validates_at_unrelated_bases_and_rejects_changed_evidence()
 -> Result<(), Box<dyn std::error::Error>> {
     for base in [0x1_4000_0000, 0x2_8000_0000] {
-        let mut image = Image::new(base);
+        let mut image = observed_image(base);
         validate_mastery_layout(&mut image, base, crate::target::BUILD.image_size)?;
         let mut reader = TargetReader::new(
             &mut image,
@@ -60,8 +31,11 @@ fn observed_layout_validates_at_unrelated_bases_and_rejects_changed_evidence()
             0x002f_9009,
             0x011f_b2a9,
             0x01c1_d04e,
+            0x0135_4be2,
+            0x0135_4c22,
+            0x00bc_bd72,
         ] {
-            let mut image = Image::new(base);
+            let mut image = observed_image(base);
             *image
                 .bytes
                 .get_mut(&(base + rva))
@@ -72,7 +46,7 @@ fn observed_layout_validates_at_unrelated_bases_and_rejects_changed_evidence()
             ));
         }
         for &(rva, _) in &WINDOWS[6..] {
-            let mut image = Image::new(base);
+            let mut image = observed_image(base);
             *image
                 .bytes
                 .get_mut(&(base + u64::from(rva)))

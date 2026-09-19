@@ -10,7 +10,7 @@ use crate::{
 use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ObjectOffset, ReadError, RecordView, TargetReader};
 use std::collections::BTreeMap;
-use warframe_model::{MasteryItemProgress, MasterySnapshot};
+use warframe_model::{MasteryItemProgress, MasteryPointBreakdown, MasterySnapshot};
 
 #[derive(Debug, displaydoc::Display, derive_more::Error, derive_more::From)]
 pub(crate) enum MasteryError {
@@ -66,7 +66,12 @@ pub(crate) fn read_mastery(
         login.account_id.clone(),
         u32::from(before.rank),
         total,
-        u64::from(before.item_xp),
+        MasteryPointBreakdown {
+            item_points: u64::from(before.item_xp),
+            mission_points: u64::from(before.non_item_xp[0]),
+            railjack_intrinsic_points: u64::from(before.non_item_xp[1]),
+            drifter_intrinsic_points: u64::from(before.non_item_xp[2]),
+        },
         by_key.into_values().collect(),
     )?)
 }

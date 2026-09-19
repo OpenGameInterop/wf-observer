@@ -19,6 +19,7 @@ pub(crate) fn validate_mastery_layout(
     validate_calculation_name(&mut reader, MASTERY)?;
     validate_calculation_reader(&mut reader, MASTERY)?;
     validate_non_item_xp_reader(&mut reader, MASTERY, INVENTORY_OWNER.offset)?;
+    crate::topics::intrinsics::validate_mastery_sources(&mut reader)?;
     validate_rank_reader(&mut reader, MASTERY)?;
     validate_serializer(&mut reader, MASTERY)
 }

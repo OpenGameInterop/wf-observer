@@ -42,8 +42,8 @@ pub fn App() -> Element {
                     div { class: "welcome-copy",
                         p { class: "eyebrow", "ONE CONNECTION. INDEPENDENT COMPONENTS." }
                         h2 { "Your game,\nin view." }
-                        p { "Explore live player data, balances, inventory, mastery, chat, screens and relic rewards through the Rust SDK." }
-                        div { class: "topic-chips", for name in ["Player", "Currencies", "Inventory", "Chat", "Screens", "Relic rewards", "Mastery"] { span { "{name}" } } }
+                        p { "Explore live player data, balances, inventory, mastery, Intrinsics, Star Chart, chat, screens and relic rewards through the Rust SDK." }
+                        div { class: "topic-chips", for name in ["Player", "Currencies", "Inventory", "Chat", "Screens", "Relic rewards", "Mastery", "Intrinsics", "Star Chart"] { span { "{name}" } } }
                     }
                     Card { title: "Connect to your observer", subtitle: CONNECTION_HELP,
                         if let Ok(reader) = identity() {
@@ -87,7 +87,7 @@ fn Connected(connection: Connection, on_disconnect: EventHandler<()>) -> Element
     use_context_provider(|| connection.clone());
     let status = use_signal(|| None::<types::ServiceStatus>);
     let mut selected = use_signal(String::new);
-    let mounted = use_signal(|| [true; 7]);
+    let mounted = use_signal(|| [true; 9]);
     let selection = status.read().as_ref().and_then(|value| {
         value
             .targets

@@ -7,7 +7,10 @@ fn sample() -> Result<MasterySnapshot, Box<dyn std::error::Error>> {
         AccountId::new("0123456789abcdef01234567")?,
         34,
         u64::MAX,
-        0,
+        MasteryPointBreakdown {
+            mission_points: u64::MAX,
+            ..Default::default()
+        },
         vec![
             MasteryItemProgress {
                 item_key: ItemKey::new("/Lotus/A")?,
@@ -27,6 +30,9 @@ fn progression_round_trips_exactly_and_preserves_zero_and_absence() -> TestResul
     let json = serde_json::to_value(&snapshot)?;
     assert_eq!(json["total_points"], u64::MAX.to_string());
     assert_eq!(json["item_points"], "0");
+    assert_eq!(json["mission_points"], u64::MAX.to_string());
+    assert_eq!(json["railjack_intrinsic_points"], "0");
+    assert_eq!(json["drifter_intrinsic_points"], "0");
     assert_eq!(json["items"][1]["affinity"], u64::MAX.to_string());
     assert_eq!(serde_json::from_value::<MasterySnapshot>(json)?, snapshot);
     assert_eq!(snapshot.tracked_items(), 2);
@@ -37,7 +43,13 @@ fn progression_round_trips_exactly_and_preserves_zero_and_absence() -> TestResul
         Some(0)
     );
     assert!(snapshot.get(&ItemKey::new("/Lotus/C")?).is_none());
-    let empty = MasterySnapshot::new(snapshot.account_id().clone(), 0, 0, 0, vec![])?;
+    let empty = MasterySnapshot::new(
+        snapshot.account_id().clone(),
+        0,
+        0,
+        MasteryPointBreakdown::default(),
+        vec![],
+    )?;
     assert_eq!(empty.tracked_items(), 0);
     assert_eq!(
         serde_json::from_str::<MasterySnapshot>(&serde_json::to_string(&empty)?)?,
@@ -47,14 +59,52 @@ fn progression_round_trips_exactly_and_preserves_zero_and_absence() -> TestResul
 }
 
 #[test]
+fn mastery_breakdown_must_match_total_without_overflow() -> TestResult {
+    let account = sample()?.account_id().clone();
+    let breakdown = MasteryPointBreakdown {
+        item_points: 9000,
+        mission_points: 1000,
+        railjack_intrinsic_points: 75000,
+        drifter_intrinsic_points: 60000,
+    };
+    assert_eq!(breakdown.total(), Some(145_000));
+    assert!(MasterySnapshot::new(account.clone(), 0, 145_000, breakdown, vec![]).is_ok());
+    assert!(MasterySnapshot::new(account.clone(), 0, 145_001, breakdown, vec![]).is_err());
+    let overflow = MasteryPointBreakdown {
+        item_points: u64::MAX,
+        mission_points: 1,
+        ..Default::default()
+    };
+    assert_eq!(overflow.total(), None);
+    assert!(MasterySnapshot::new(account, 0, 0, overflow, vec![]).is_err());
+    Ok(())
+}
+
+#[test]
 fn invalid_owner_order_points_and_decimal_encodings_are_rejected() -> TestResult {
     let original = serde_json::to_value(sample()?)?;
-    for field in ["account_id", "rank", "total_points", "item_points", "items"] {
+    for field in [
+        "account_id",
+        "rank",
+        "total_points",
+        "item_points",
+        "mission_points",
+        "railjack_intrinsic_points",
+        "drifter_intrinsic_points",
+        "items",
+    ] {
         let mut json = original.clone();
         json.as_object_mut().ok_or("missing object")?.remove(field);
         assert!(serde_json::from_value::<MasterySnapshot>(json).is_err());
     }
-    for field in ["total_points", "item_points", "affinity"] {
+    for field in [
+        "total_points",
+        "item_points",
+        "mission_points",
+        "railjack_intrinsic_points",
+        "drifter_intrinsic_points",
+        "affinity",
+    ] {
         for value in [
             serde_json::json!(0),
             serde_json::json!("00"),

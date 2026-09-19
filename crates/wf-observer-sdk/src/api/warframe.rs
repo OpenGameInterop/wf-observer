@@ -87,6 +87,26 @@ pub struct WarframeSession {
 }
 #[boltffi::export]
 impl WarframeSession {
+    /// Creates an inactive intrinsics handle; retaining it does not acquire data.
+    #[must_use]
+    pub fn intrinsics(&self) -> crate::api::IntrinsicsCapability {
+        crate::api::IntrinsicsCapability::new(crate::raw::Capability::<
+            crate::warframe::IntrinsicsTopic,
+        >::new(
+            self.client.clone(), self.info.session.clone()
+        ))
+    }
+
+    /// Creates an inactive star chart handle; retaining it does not acquire data.
+    #[must_use]
+    pub fn star_chart(&self) -> crate::api::StarChartCapability {
+        crate::api::StarChartCapability::new(crate::raw::Capability::<
+            crate::warframe::StarChartTopic,
+        >::new(
+            self.client.clone(), self.info.session.clone()
+        ))
+    }
+
     /// Creates an inactive mastery handle; retaining it does not acquire data.
     #[must_use]
     pub fn mastery(&self) -> crate::api::MasteryCapability {

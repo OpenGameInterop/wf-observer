@@ -12,6 +12,11 @@ pub struct WarframeMastery {
     pub total_points: u64,
     /// Game-calculated mastery points from item progression.
     pub item_points: u64,
+    /// Combined Normal and Steel Path mission/Junction mastery.
+    pub mission_points: u64,
+    /// Railjack mastery, including credit retained after a respec.
+    pub railjack_intrinsic_points: u64,
+    pub drifter_intrinsic_points: u64,
     /// Unique canonical item paths in ascending order.
     pub items: Vec<MasteryItemProgress>,
 }
@@ -28,13 +33,16 @@ pub struct MasteryItemProgress {
 
 impl From<crate::raw::TypedData<warframe_model::MasterySnapshot>> for WarframeMastery {
     fn from(value: crate::raw::TypedData<warframe_model::MasterySnapshot>) -> Self {
-        let (account_id, rank, total_points, item_points, items) = value.data.into_parts();
+        let (account_id, rank, total_points, breakdown, items) = value.data.into_parts();
         Self {
             metadata: value.metadata.into(),
             account_id: account_id.into(),
             rank,
             total_points,
-            item_points,
+            item_points: breakdown.item_points,
+            mission_points: breakdown.mission_points,
+            railjack_intrinsic_points: breakdown.railjack_intrinsic_points,
+            drifter_intrinsic_points: breakdown.drifter_intrinsic_points,
             items: items
                 .into_iter()
                 .map(|item| MasteryItemProgress {
@@ -72,7 +80,7 @@ impl WarframeMastery {
 mod tests {
     use super::*;
     use crate::api::{SessionRef, TopicRef, TopicSource};
-    use warframe_model::{AccountId, ItemKey, MasterySnapshot};
+    use warframe_model::{AccountId, ItemKey, MasteryPointBreakdown, MasterySnapshot};
 
     #[test]
     fn mastery_envelopes_preserve_exact_values_and_validate_identity() -> anyhow::Result<()> {
@@ -80,7 +88,10 @@ mod tests {
             AccountId::new("0123456789abcdef01234567")?,
             34,
             u64::MAX,
-            0,
+            MasteryPointBreakdown {
+                mission_points: u64::MAX,
+                ..Default::default()
+            },
             vec![warframe_model::MasteryItemProgress {
                 item_key: ItemKey::new("/Lotus/A")?,
                 affinity: u64::MAX,

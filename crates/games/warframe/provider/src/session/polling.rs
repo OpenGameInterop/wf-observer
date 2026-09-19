@@ -23,12 +23,30 @@ mod acquisition_tests;
 #[path = "mastery_tests.rs"]
 mod mastery_tests;
 
+#[cfg(test)]
+#[path = "progression_tests.rs"]
+mod progression_tests;
+
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const CHAT_INTERVAL: Duration = Duration::from_millis(250);
 const CHAT_BACKLOG_INTERVAL: Duration = Duration::from_millis(25);
 
 pub(crate) static MASTERY: CapabilityDescriptor = CapabilityDescriptor {
     topic: "warframe.mastery",
+    schema_version: 1,
+    snapshots: Some(SnapshotDelivery::Delta),
+    events: false,
+};
+
+pub(crate) static INTRINSICS: CapabilityDescriptor = CapabilityDescriptor {
+    topic: "warframe.intrinsics",
+    schema_version: 1,
+    snapshots: Some(SnapshotDelivery::Full),
+    events: false,
+};
+
+pub(crate) static STAR_CHART: CapabilityDescriptor = CapabilityDescriptor {
+    topic: "warframe.star_chart",
     schema_version: 1,
     snapshots: Some(SnapshotDelivery::Delta),
     events: false,
@@ -70,6 +88,8 @@ pub(crate) struct WarframeSession {
     layouts: SharedLayouts,
     inventory: TopicState,
     mastery: TopicState,
+    intrinsics: TopicState,
+    star_chart: TopicState,
     currencies: TopicState,
     player: TopicState,
     chat: TopicState,
@@ -211,13 +231,15 @@ impl ProviderSession for WarframeSession {
 
 impl WarframeSession {
     /// These topics share login ownership, but have independent layouts and deadlines.
-    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 5] {
+    fn account_topics(&mut self) -> [(&'static CapabilityDescriptor, &mut TopicState); 7] {
         [
             (&INVENTORY, &mut self.inventory),
             (&CURRENCIES, &mut self.currencies),
             (&PLAYER, &mut self.player),
             (&CHAT, &mut self.chat),
             (&MASTERY, &mut self.mastery),
+            (&INTRINSICS, &mut self.intrinsics),
+            (&STAR_CHART, &mut self.star_chart),
         ]
     }
 
@@ -282,6 +304,20 @@ impl WarframeSession {
             .mastery
             .due(context.now)
             .then(|| self.sample_mastery(context, image, &before));
+        let intrinsics = self.intrinsics.due(context.now).then(|| {
+            topics::read_intrinsics(context.memory, image.base, image.actual.image_size, &before)
+                .map_err(|error| read_retry(&error, context.now, INTRINSICS.topic))
+        });
+        let star_chart = self.star_chart.due(context.now).then(|| {
+            topics::read_star_chart(
+                context.memory,
+                image.base,
+                image.actual.image_size,
+                &before,
+                &mut self.strings,
+            )
+            .map_err(|error| read_retry(&error, context.now, STAR_CHART.topic))
+        });
         let player = self.player.due(context.now).then(|| {
             topics::read_player(context.memory, image.base, image.actual.image_size, &before)
                 .map_err(|error| read_retry(&error, context.now, PLAYER.topic))
@@ -313,6 +349,17 @@ impl WarframeSession {
             );
         }
         self.publish(context, inventory, currencies, player, mastery)?;
+        snapshot(context, &INTRINSICS, &mut self.intrinsics, intrinsics)?;
+        snapshot(context, &STAR_CHART, &mut self.star_chart, star_chart)?;
+        self.publish_chat(context, &before, chat)
+    }
+
+    fn publish_chat(
+        &mut self,
+        context: &mut PollContext<'_>,
+        before: &LoginIdentity,
+        chat: Option<Result<Option<topics::ChatHistory>, Retry>>,
+    ) -> Result<(), ProviderError> {
         match chat {
             Some(Ok(history)) => {
                 let current = history
@@ -432,28 +479,7 @@ impl WarframeSession {
                 unavailable(context, &INVENTORY, &mut self.inventory, retry)?;
             }
         }
-        if self.mastery.due(context.now) {
-            let ready = self
-                .validate_item_paths(context.memory, image, context.now)
-                .and_then(|()| {
-                    self.layouts
-                        .inventory_owner(context.memory, image, context.now)
-                })
-                .and_then(|()| {
-                    self.mastery
-                        .layout
-                        .validate(context.now, MASTERY.topic, || {
-                            topics::validate_mastery_layout(
-                                context.memory,
-                                image.base,
-                                image.actual.image_size,
-                            )
-                        })
-                });
-            if let Err(retry) = ready {
-                unavailable(context, &MASTERY, &mut self.mastery, retry)?;
-            }
-        }
+        self.validate_progression_due(context, image)?;
         if self.currencies.due(context.now) {
             let ready = self
                 .currencies
@@ -483,6 +509,78 @@ impl WarframeSession {
             });
             if let Err(retry) = ready {
                 unavailable(context, &CHAT, &mut self.chat, retry)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_progression_due(
+        &mut self,
+        context: &mut PollContext<'_>,
+        image: Executable,
+    ) -> Result<(), ProviderError> {
+        if self.mastery.due(context.now) {
+            let ready = self
+                .validate_item_paths(context.memory, image, context.now)
+                .and_then(|()| {
+                    self.layouts
+                        .inventory_owner(context.memory, image, context.now)
+                })
+                .and_then(|()| {
+                    self.mastery
+                        .layout
+                        .validate(context.now, MASTERY.topic, || {
+                            topics::validate_mastery_layout(
+                                context.memory,
+                                image.base,
+                                image.actual.image_size,
+                            )
+                        })
+                });
+            if let Err(retry) = ready {
+                unavailable(context, &MASTERY, &mut self.mastery, retry)?;
+            }
+        }
+        if self.intrinsics.due(context.now) {
+            let ready = self
+                .layouts
+                .inventory_owner(context.memory, image, context.now)
+                .and_then(|()| {
+                    self.intrinsics
+                        .layout
+                        .validate(context.now, INTRINSICS.topic, || {
+                            topics::validate_intrinsics_layout(
+                                context.memory,
+                                image.base,
+                                image.actual.image_size,
+                            )
+                        })
+                });
+            if let Err(retry) = ready {
+                unavailable(context, &INTRINSICS, &mut self.intrinsics, retry)?;
+            }
+        }
+        if self.star_chart.due(context.now) {
+            let ready = self
+                .layouts
+                .inventory_owner(context.memory, image, context.now)
+                .and_then(|()| {
+                    self.layouts
+                        .string_tokens(context.memory, image, context.now)
+                })
+                .and_then(|()| {
+                    self.star_chart
+                        .layout
+                        .validate(context.now, STAR_CHART.topic, || {
+                            topics::validate_star_chart_layout(
+                                context.memory,
+                                image.base,
+                                image.actual.image_size,
+                            )
+                        })
+                });
+            if let Err(retry) = ready {
+                unavailable(context, &STAR_CHART, &mut self.star_chart, retry)?;
             }
         }
         Ok(())
@@ -761,16 +859,22 @@ mod tests {
                 PLAYER.topic,
                 CHAT.topic,
                 MASTERY.topic,
+                INTRINSICS.topic,
+                STAR_CHART.topic,
                 CURRENCIES.topic,
                 PLAYER.topic,
                 CHAT.topic,
-                MASTERY.topic
+                MASTERY.topic,
+                INTRINSICS.topic,
+                STAR_CHART.topic
             ]
         );
         session.currencies.demand(false, now);
         session.player.demand(false, now);
         session.chat.demand(false, now);
         session.mastery.demand(false, now);
+        session.intrinsics.demand(false, now);
+        session.star_chart.demand(false, now);
         assert_eq!(session.schedule(now), PollResult::Idle);
         Ok(())
     }
@@ -870,10 +974,9 @@ mod tests {
             };
             assert_eq!(events.snapshots.len(), 1);
             assert_eq!(events.snapshots[0].0, healthy.topic);
-            assert!(
-                health.health.iter().all(|(topic, _)| *topic == broken.topic
-                    || (blocked <= 1 && *topic == MASTERY.topic))
-            );
+            assert!(health.health.iter().all(|(topic, _)| *topic == broken.topic
+                || (blocked <= 1 && *topic == MASTERY.topic)
+                || (blocked == 0 && *topic == STAR_CHART.topic)));
         }
         Ok(())
     }

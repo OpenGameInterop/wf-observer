@@ -1,5 +1,5 @@
 use super::*;
-use sdk::warframe::{MasteryItemProgress, MasterySnapshot, decode_mastery};
+use sdk::warframe::{MasteryItemProgress, MasteryPointBreakdown, MasterySnapshot, decode_mastery};
 
 fn mastery(account: &str, affinity: u64) -> anyhow::Result<MasterySnapshot> {
     // Enough unchanged rows for the service to choose delta delivery on updates.
@@ -15,7 +15,11 @@ fn mastery(account: &str, affinity: u64) -> anyhow::Result<MasterySnapshot> {
         AccountId::new(account)?,
         34,
         u64::MAX,
-        6000,
+        MasteryPointBreakdown {
+            item_points: 6000,
+            mission_points: u64::MAX - 6000,
+            ..Default::default()
+        },
         items,
     )?)
 }

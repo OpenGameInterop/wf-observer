@@ -45,3 +45,12 @@ pub use screens::{Screen, WarframeScreens};
 pub use screens_watch::{ScreensCapability, ScreensState, ScreensWatch};
 pub use subscription::ObserverSubscription;
 pub use warframe::{Warframe, WarframeSession};
+
+pub(crate) mod intrinsics;
+pub(crate) mod intrinsics_watch;
+pub(crate) mod star_chart;
+pub(crate) mod star_chart_watch;
+pub use intrinsics::{DrifterIntrinsics, RailjackIntrinsics, WarframeIntrinsics};
+pub use intrinsics_watch::{IntrinsicsCapability, IntrinsicsState, IntrinsicsWatch};
+pub use star_chart::{StarChartDifficulty, StarChartNodeProgress, WarframeStarChart};
+pub use star_chart_watch::{StarChartCapability, StarChartState, StarChartWatch};

@@ -5,7 +5,7 @@ use provider_sdk::{EventSink, HealthSink};
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-fn session(base: u64) -> WarframeSession {
+pub(super) fn session(base: u64) -> WarframeSession {
     let mut session = WarframeSession {
         executable: CachedCheck::Passed(Executable {
             base,
@@ -61,10 +61,10 @@ fn memory(base: u64) -> Memory {
 }
 
 #[derive(Default)]
-struct Output {
-    snapshots: Vec<(&'static str, serde_json::Value)>,
-    resets: Vec<&'static str>,
-    health: Vec<(&'static str, CapabilityHealth)>,
+pub(super) struct Output {
+    pub(super) snapshots: Vec<(&'static str, serde_json::Value)>,
+    pub(super) resets: Vec<&'static str>,
+    pub(super) health: Vec<(&'static str, CapabilityHealth)>,
 }
 impl EventSink for Output {
     fn reset(&mut self, cap: &CapabilityDescriptor) -> Result<(), ProviderError> {
@@ -98,7 +98,7 @@ impl HealthSink for Output {
     }
 }
 
-fn poll(
+pub(super) fn poll(
     session: &mut WarframeSession,
     memory: &mut Memory,
     second: u64,
@@ -148,6 +148,14 @@ fn mastery_is_independent_sorted_and_uses_retained_raw_affinity() -> TestResult 
         assert_eq!(
             (value.rank(), value.item_points(), value.total_points()),
             (34, 6000, 9000)
+        );
+        assert_eq!(
+            (
+                value.mission_points(),
+                value.railjack_intrinsic_points(),
+                value.drifter_intrinsic_points()
+            ),
+            (1000, 2000, 0)
         );
         assert_eq!(value.tracked_items(), 2);
         assert!(value.items()[0].item_key.as_str().ends_with("AlloyPlate"));
@@ -237,7 +245,7 @@ fn rebuilding_recalculation_and_changed_samples_retry_then_recover() -> TestResu
         let payload = memory.heap() + 0x40_0000;
         match case {
             0 => memory.put(inventory + 0xd20, &[1]),
-            1 => memory.put(memory.data() + 0x11c60, &[1]),
+            1 => memory.put(memory.data() + 0x0001_1c60, &[1]),
             2 => memory.change_on_read(payload, memory.data() + 0xfdc0, &[1]),
             3 => memory.change_on_read(payload, inventory + 0xd24, &6001_u32.to_le_bytes()),
             4 => memory.change_on_read(payload, inventory + 0xf8, &32_u32.to_le_bytes()),
@@ -254,7 +262,7 @@ fn rebuilding_recalculation_and_changed_samples_retry_then_recover() -> TestResu
             )]
         ));
         memory.put(inventory + 0xd20, &[0]);
-        memory.put(memory.data() + 0x11c60, &[0]);
+        memory.put(memory.data() + 0x0001_1c60, &[0]);
         snapshot(&poll(&mut session, &mut memory, 1, &[&MASTERY])?)?;
     }
     Ok(())

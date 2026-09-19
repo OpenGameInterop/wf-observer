@@ -69,6 +69,20 @@ impl HealthSink for Output {
 #[test]
 #[ignore = "requires one running, logged-in Warframe instance and read access"]
 fn current_game_mastery() -> Result<(), Box<dyn std::error::Error>> {
+    current_game_topics(&["warframe.mastery"])
+}
+
+#[test]
+#[ignore = "requires one running, logged-in Warframe instance and read access"]
+fn current_game_progression() -> Result<(), Box<dyn std::error::Error>> {
+    current_game_topics(&[
+        "warframe.mastery",
+        "warframe.intrinsics",
+        "warframe.star_chart",
+    ])
+}
+
+fn current_game_topics(topics: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
     let provider = WarframeProvider;
     let targets = memory_reader::discover_targets_by(|metadata| {
         provider.identify_process(metadata).map(str::to_owned)
@@ -86,9 +100,9 @@ fn current_game_mastery() -> Result<(), Box<dyn std::error::Error>> {
         .manifest()
         .capabilities
         .iter()
-        .filter(|cap| cap.topic == "warframe.mastery")
+        .filter(|cap| topics.contains(&cap.topic))
         .collect();
-    assert_eq!(demand.len(), 1);
+    assert_eq!(demand.len(), topics.len());
     for second in 0..2 {
         memory.reads = 0;
         memory.bytes = 0;
@@ -106,16 +120,46 @@ fn current_game_mastery() -> Result<(), Box<dyn std::error::Error>> {
         let elapsed = started.elapsed();
         memory.verify()?;
         session.poll_completed(true);
-        assert_eq!(events.snapshots.len(), 1, "health: {:?}", health.health);
-        for (_, value) in events.snapshots {
-            let value: warframe_model::MasterySnapshot = serde_json::from_value(value)?;
-            println!(
-                "rank {}, {} total points, {} item points, {} retained items",
-                value.rank(),
-                value.total_points(),
-                value.item_points(),
-                value.tracked_items()
-            );
+        assert_eq!(
+            events.snapshots.len(),
+            topics.len(),
+            "health: {:?}",
+            health.health
+        );
+        for (topic, value) in events.snapshots {
+            match topic {
+                "warframe.mastery" => {
+                    let value: warframe_model::MasterySnapshot = serde_json::from_value(value)?;
+                    println!(
+                        "rank {}, {} total points, {:?}, {} retained items",
+                        value.rank(),
+                        value.total_points(),
+                        value.breakdown(),
+                        value.tracked_items()
+                    );
+                }
+                "warframe.intrinsics" => {
+                    let value: warframe_model::IntrinsicsSnapshot = serde_json::from_value(value)?;
+                    println!(
+                        "Railjack {:?}; Drifter {:?}",
+                        value.railjack(),
+                        value.drifter()
+                    );
+                }
+                "warframe.star_chart" => {
+                    let value: warframe_model::StarChartSnapshot = serde_json::from_value(value)?;
+                    println!(
+                        "{} Normal credit records; {} Steel Path credit records",
+                        value.nodes().len(),
+                        value
+                            .nodes()
+                            .iter()
+                            .filter(|node| node.steel_path_completed)
+                            .count()
+                    );
+                }
+                _ => return Err("unexpected topic".into()),
+            }
         }
         println!(
             "sample {second}: {} reads, {} bytes, {elapsed:?}; next {next:?}",

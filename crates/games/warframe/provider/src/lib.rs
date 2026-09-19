@@ -3,6 +3,7 @@
 #[macro_use(derive)]
 extern crate derive_aliases;
 
+mod code;
 mod derive_alias;
 
 mod item_type;

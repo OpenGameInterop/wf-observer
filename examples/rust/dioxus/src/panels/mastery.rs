@@ -47,6 +47,9 @@ pub fn Mastery() -> Element {
                             ("Completed rank", u64::from(value.rank)),
                             ("Total mastery points", value.total_points),
                             ("Item mastery points", value.item_points),
+                            ("Mission mastery points", value.mission_points),
+                            ("Railjack Intrinsic mastery", value.railjack_intrinsic_points),
+                            ("Drifter Intrinsic mastery", value.drifter_intrinsic_points),
                             ("Tracked items", value.items.len() as u64),
                         ] {
                             div { class: "balance", span { "{name}" } strong { "{amount}" } }

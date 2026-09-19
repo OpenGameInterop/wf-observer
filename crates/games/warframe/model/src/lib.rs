@@ -22,7 +22,7 @@ pub mod screens;
 pub mod star_chart;
 
 pub use account_id::{AccountId, InvalidAccountId};
-pub use chat::{ChatChannel, ChatEvent, ChatMessage, ChatTime, ChatUpdate};
+pub use chat::{ChatChannel, ChatDirection, ChatEvent, ChatMessage, ChatTime, ChatUpdate};
 pub use currencies::{CurrencyBalances, CurrencySnapshot};
 pub use intrinsics::{
     DrifterIntrinsics, IntrinsicsSnapshot, InvalidIntrinsics, RailjackIntrinsics,

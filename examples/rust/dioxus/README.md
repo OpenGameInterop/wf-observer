@@ -30,7 +30,10 @@ Railjack/Drifter ranks and unspent points. Star Chart shows searchable retained
 node completions with separate Normal and Steel Path credit.
 Choose one process. Each panel can be independently unmounted to
 release its subscription. Mount it again to resume after a terminal error.
-The chat view retains its latest 200 events and marks source-continuity gaps.
+The chat view retains its latest 200 events, displays authorship direction and
+known private peers, and marks lost positions. Initial history and retained entries
+after a lost position are skipped; newly appearing conversations include their first
+observed message. The chat watch obtains its own optional player-name enrichment.
 
 [sdk.rs](src/sdk.rs) connects SDK streams to component signals. Each mounted
 panel owns a watch; unmounting drops it. The currencies panel also demonstrates

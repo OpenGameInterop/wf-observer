@@ -17,13 +17,12 @@ We only read memory. We never write to it or inject code.
 | `warframe.star_chart` | Retained node completion counts and Steel Path completion flags. | Snapshot |
 | `warframe.currencies` | Credits, Endo, tradable and non-tradable Platinum. | Snapshot |
 | `warframe.player` | Account ID and username. | Snapshot |
-| `warframe.chat` | Channel, sender, message text and optional game-local hour/minute. | Event |
+| `warframe.chat` | Channel, author, direction, conversation ID, optional private peer, original text and game-local hour/minute. | Event |
 | `warframe.screens` | Visible interface screens, including unknown movie asset paths. | Snapshot |
 | `warframe.relic_rewards` | Current relic picker: closed or up to four ordered choices. | Snapshot |
 
 Snapshot topics support `read()` for one sample, `watch()` for updates, and
-`cached()` to inspect the service cache. Chat is an event stream with explicit
-gap notifications; it has no snapshot API.
+`cached()` to inspect the service cache.
 
 ```rust,no_run
 # async fn example() -> Result<(), wf_observer_sdk::ObserverError> {

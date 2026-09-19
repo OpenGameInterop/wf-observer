@@ -25,7 +25,7 @@ mod stream;
 pub(crate) mod subscription;
 pub(crate) mod warframe;
 
-pub use chat::{ChatChannel, ChatMessage, ChatTime, ChatUpdate, WarframeChatEvent};
+pub use chat::{ChatChannel, ChatDirection, ChatMessage, ChatTime, ChatUpdate, WarframeChatEvent};
 pub use chat_watch::{ChatCapability, ChatObservation, ChatState, ChatWatch};
 pub use client::{ObserverClient, connect, connect_local};
 pub use currencies::{CurrencyBalances, WarframeCurrencies};

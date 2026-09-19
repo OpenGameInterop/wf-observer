@@ -5,15 +5,12 @@ use crate::{
     string_pool::StringTokenCache,
     topics,
 };
-use memory_reader::ProcessMemory;
 use provider_sdk::{
     CapabilityDescriptor, CapabilityHealth, PollContext, PollResult, ProviderError,
     ProviderSession, SnapshotDelivery, UnavailableReason,
 };
 use std::time::Duration;
-use warframe_model::{
-    ChatEvent, CurrencySnapshot, InventorySnapshot, MasterySnapshot, PlayerSnapshot,
-};
+use warframe_model::{ChatEvent, InventorySnapshot, MasterySnapshot, PlayerSnapshot};
 
 #[cfg(test)]
 #[path = "acquisition_tests.rs"]
@@ -26,6 +23,10 @@ mod mastery_tests;
 #[cfg(test)]
 #[path = "progression_tests.rs"]
 mod progression_tests;
+
+#[cfg(test)]
+#[path = "chat_tests.rs"]
+mod chat_tests;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const CHAT_INTERVAL: Duration = Duration::from_millis(250);
@@ -98,7 +99,16 @@ pub(crate) struct WarframeSession {
     strings: StringTokenCache,
     chat_history: Option<topics::ChatHistory>,
     chat_cursor: topics::ChatCursor,
-    pending_chat: Option<(Option<topics::ChatHistory>, topics::ChatCursor)>,
+    pending_chat: Option<PendingChat>,
+    chat_staged: bool,
+}
+
+/// One bounded publication, retained across rejection even if native entries expire.
+struct PendingChat {
+    history: Option<topics::ChatHistory>,
+    cursor: topics::ChatCursor,
+    events: Vec<ChatEvent>,
+    more: bool,
 }
 
 /// Demand controls acquisition, not the lifetime of a successful layout check.
@@ -137,15 +147,19 @@ impl ProviderSession for WarframeSession {
 
     fn poll_completed(&mut self, committed: bool) {
         self.visual.poll_completed(committed);
-        if let Some((history, cursor)) = self.pending_chat.take() {
-            if committed {
-                if let Some(history) = history {
+        // An unrelated accepted poll must not commit a pending chat retry.
+        if !std::mem::take(&mut self.chat_staged) {
+            return;
+        }
+        if committed {
+            if let Some(pending) = self.pending_chat.take() {
+                if let Some(history) = pending.history {
                     self.chat_history = Some(history);
                 }
-                self.chat_cursor = cursor;
-            } else {
-                self.chat.next_poll = Duration::ZERO;
+                self.chat_cursor = pending.cursor;
             }
+        } else {
+            self.chat.next_poll = Duration::ZERO;
         }
     }
 
@@ -284,10 +298,9 @@ impl WarframeSession {
                 );
             }
         };
-        let mut reset = false;
-        if self.login.as_ref().is_some_and(|old| old != &before) {
+        let reset = self.login.as_ref().is_some_and(|old| old != &before);
+        if reset {
             self.reset_account(context.events, context.now)?;
-            reset = true;
             // Reset also wakes previously deferred topics; their cached failures still apply.
             self.validate_due(context, image)?;
         }
@@ -318,11 +331,21 @@ impl WarframeSession {
             )
             .map_err(|error| read_retry(&error, context.now, STAR_CHART.topic))
         });
-        let player = self.player.due(context.now).then(|| {
-            topics::read_player(context.memory, image.base, image.actual.image_size, &before)
-                .map_err(|error| read_retry(&error, context.now, PLAYER.topic))
-        });
+        let player_due = self.player.due(context.now);
+        let name_needed = self.chat.due(context.now) && self.pending_chat.is_none();
+        // Optional chat enrichment shares the coherent login sample, never a cached username.
+        // A failure here affects player health only when player itself is due.
+        let player =
+            (player_due || name_needed).then(|| self.sample_player(context, image, &before));
+        let local_name = player
+            .as_ref()
+            .and_then(|sample| sample.as_ref().ok())
+            .map(|sample| sample.username.as_str().to_owned());
+        let player = if player_due { player } else { None };
         let chat = self.chat.due(context.now).then(|| {
+            if self.pending_chat.is_some() {
+                return Ok(None);
+            }
             topics::read_chat(
                 context.memory,
                 image.base,
@@ -348,10 +371,13 @@ impl WarframeSession {
                 },
             );
         }
-        self.publish(context, inventory, currencies, player, mastery)?;
+        snapshot(context, &INVENTORY, &mut self.inventory, inventory)?;
+        snapshot(context, &CURRENCIES, &mut self.currencies, currencies)?;
+        snapshot(context, &PLAYER, &mut self.player, player)?;
+        snapshot(context, &MASTERY, &mut self.mastery, mastery)?;
         snapshot(context, &INTRINSICS, &mut self.intrinsics, intrinsics)?;
         snapshot(context, &STAR_CHART, &mut self.star_chart, star_chart)?;
-        self.publish_chat(context, &before, chat)
+        self.publish_chat(context, &before, chat, local_name.as_deref())
     }
 
     fn publish_chat(
@@ -359,26 +385,45 @@ impl WarframeSession {
         context: &mut PollContext<'_>,
         before: &LoginIdentity,
         chat: Option<Result<Option<topics::ChatHistory>, Retry>>,
+        local_name: Option<&str>,
     ) -> Result<(), ProviderError> {
         match chat {
             Some(Ok(history)) => {
-                let current = history
+                if self.pending_chat.is_none() {
+                    let current = history
+                        .as_ref()
+                        .or(self.chat_history.as_ref())
+                        .ok_or_else(|| ProviderError::Failed("chat baseline missing".into()))?;
+                    let (cursor, updates, more) = self
+                        .chat_cursor
+                        .prepare(current, local_name)
+                        .map_err(|error| ProviderError::Failed(error.to_string()))?;
+                    self.pending_chat = Some(PendingChat {
+                        history,
+                        cursor,
+                        events: updates
+                            .into_iter()
+                            .map(|update| ChatEvent {
+                                account_id: before.account_id.clone(),
+                                update,
+                            })
+                            .collect(),
+                        more,
+                    });
+                }
+                let pending = self
+                    .pending_chat
                     .as_ref()
-                    .or(self.chat_history.as_ref())
-                    .ok_or_else(|| ProviderError::Failed("chat baseline missing".into()))?;
-                let (cursor, updates, more) = self.chat_cursor.prepare(current);
-                // Stage the next position before any sink operation can fail.
-                self.pending_chat = Some((history, cursor));
+                    .ok_or_else(|| ProviderError::Failed("chat publication missing".into()))?;
+                // Retain both events and tentative positions before any sink can fail.
+                self.chat_staged = true;
                 context.health.update(&CHAT, CapabilityHealth::Available)?;
-                for update in updates {
-                    let payload = serde_json::to_value(ChatEvent {
-                        account_id: before.account_id.clone(),
-                        update,
-                    })
-                    .map_err(|error| ProviderError::Failed(error.to_string()))?;
+                for event in &pending.events {
+                    let payload = serde_json::to_value(event)
+                        .map_err(|error| ProviderError::Failed(error.to_string()))?;
                     context.events.event(&CHAT, &payload)?;
                 }
-                self.chat.next_poll = context.now.saturating_add(if more {
+                self.chat.next_poll = context.now.saturating_add(if pending.more {
                     CHAT_BACKLOG_INTERVAL
                 } else {
                     CHAT_INTERVAL
@@ -390,19 +435,17 @@ impl WarframeSession {
         Ok(())
     }
 
-    /// Called only after the shared ownership recheck; an acquisition error affects only its topic.
-    fn publish(
+    fn sample_player(
         &mut self,
         context: &mut PollContext<'_>,
-        inventory: Option<Result<InventorySnapshot, Retry>>,
-        currencies: Option<Result<CurrencySnapshot, Retry>>,
-        player: Option<Result<PlayerSnapshot, Retry>>,
-        mastery: Option<Result<MasterySnapshot, Retry>>,
-    ) -> Result<(), ProviderError> {
-        snapshot(context, &INVENTORY, &mut self.inventory, inventory)?;
-        snapshot(context, &CURRENCIES, &mut self.currencies, currencies)?;
-        snapshot(context, &PLAYER, &mut self.player, player)?;
-        snapshot(context, &MASTERY, &mut self.mastery, mastery)
+        image: Executable,
+        login: &LoginIdentity,
+    ) -> Result<PlayerSnapshot, Retry> {
+        self.player.layout.validate(context.now, PLAYER.topic, || {
+            topics::validate_player_layout(context.memory, image.base, image.actual.image_size)
+        })?;
+        topics::read_player(context.memory, image.base, image.actual.image_size, login)
+            .map_err(|error| read_retry(&error, context.now, PLAYER.topic))
     }
 
     fn sample_inventory(
@@ -459,7 +502,8 @@ impl WarframeSession {
     ) -> Result<(), ProviderError> {
         if self.inventory.due(context.now) {
             let ready = self
-                .validate_item_paths(context.memory, image, context.now)
+                .layouts
+                .item_paths(context.memory, image, context.now)
                 .and_then(|()| {
                     self.layouts
                         .inventory_owner(context.memory, image, context.now)
@@ -521,7 +565,8 @@ impl WarframeSession {
     ) -> Result<(), ProviderError> {
         if self.mastery.due(context.now) {
             let ready = self
-                .validate_item_paths(context.memory, image, context.now)
+                .layouts
+                .item_paths(context.memory, image, context.now)
                 .and_then(|()| {
                     self.layouts
                         .inventory_owner(context.memory, image, context.now)
@@ -586,15 +631,6 @@ impl WarframeSession {
         Ok(())
     }
 
-    fn validate_item_paths(
-        &mut self,
-        memory: &mut dyn ProcessMemory,
-        image: Executable,
-        now: Duration,
-    ) -> Result<(), Retry> {
-        self.layouts.item_paths(memory, image, now)
-    }
-
     fn clear_login(&mut self, context: &mut PollContext<'_>) -> Result<(), ProviderError> {
         if self.login.take().is_some() {
             self.reset_account(context.events, context.now)?;
@@ -621,6 +657,7 @@ impl WarframeSession {
         self.chat_history = None;
         self.chat_cursor = topics::ChatCursor::default();
         self.pending_chat = None;
+        self.chat_staged = false;
     }
 
     fn account_unavailable(
@@ -684,7 +721,7 @@ fn unavailable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use memory_reader::{AccessError, MemoryModule, Target};
+    use memory_reader::{AccessError, MemoryModule, ProcessMemory, Target};
     use provider_sdk::{EventSink, HealthSink};
 
     // Fails immediately if an idle or cached-failure path touches the target.
@@ -882,7 +919,7 @@ mod tests {
     #[test]
     fn topic_validation_and_acquisition_failures_stay_isolated()
     -> Result<(), Box<dyn std::error::Error>> {
-        use warframe_model::{AccountId, CurrencyBalances};
+        use warframe_model::{AccountId, CurrencyBalances, CurrencySnapshot};
         let image = Executable {
             base: 0x1_4000_0000,
             actual: crate::target::BUILD,
@@ -952,20 +989,25 @@ mod tests {
                     non_tradable_platinum: 0,
                 },
             };
-            session.publish(
+            snapshot(
                 &mut context,
+                &INVENTORY,
+                &mut session.inventory,
                 Some(if blocked == 3 {
                     Ok(inventory)
                 } else {
                     Err(failed.clone())
                 }),
+            )?;
+            snapshot(
+                &mut context,
+                &CURRENCIES,
+                &mut session.currencies,
                 Some(if blocked == 3 {
                     Err(failed.clone())
                 } else {
                     Ok(currencies)
                 }),
-                None,
-                None,
             )?;
             let (healthy, broken) = if blocked == 3 {
                 (&INVENTORY, &CURRENCIES)

@@ -15,8 +15,8 @@ pub use player::{PlayerTopic, decode_player};
 pub use relic_rewards::{RelicRewardsTopic, decode_relic_rewards};
 pub use screens::{ScreensTopic, decode_screens};
 pub use warframe_model::{
-    AccountId, ChatChannel, ChatEvent, ChatMessage, ChatTime, ChatUpdate, CurrencyBalances,
-    CurrencySnapshot, InvalidAccountId, InvalidPlayerName, InventoryFamily,
+    AccountId, ChatChannel, ChatDirection, ChatEvent, ChatMessage, ChatTime, ChatUpdate,
+    CurrencyBalances, CurrencySnapshot, InvalidAccountId, InvalidPlayerName, InventoryFamily,
     InventoryFamilySnapshot, InventoryItemCount, InventorySnapshot, ItemKey, PlayerName,
     PlayerSnapshot,
 };

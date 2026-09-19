@@ -1,4 +1,4 @@
-//! Ordered chat messages, explicit gaps, and current source health.
+//! Best-effort live chat messages, optional gap notices, and current source health.
 use crate::api::{
     CapabilityHealth, ChatChannel, ChatMessage, ChatUpdate, EnvelopeMetadata, ObserverError,
     runtime,
@@ -33,6 +33,7 @@ pub enum ChatObservation {
         account_id: String,
         value: ChatMessage,
     },
+    /// Position was lost and retained history skipped. Consumers need no recovery logic.
     Gap {
         metadata: EnvelopeMetadata,
         account_id: String,
@@ -76,7 +77,9 @@ impl ChatCapability {
 }
 #[boltffi::export]
 impl ChatCapability {
-    /// Opens a typed chat watch. Retained game messages are not replayed.
+    /// Opens a best-effort live chat watch. Initial retained messages are skipped;
+    /// newly appearing conversations include their first observed message.
+    /// Direction and peer enrichment do not require a player subscription.
     /// # Errors
     /// Reports subscription setup errors.
     pub async fn watch(&self) -> Result<ChatWatch, ObserverError> {
@@ -101,7 +104,8 @@ impl ChatWatch {
     pub fn current(&self) -> Result<ChatState, ObserverError> {
         self.inner.current().map(Into::into).map_err(Into::into)
     }
-    /// Receives source state, a message, or an explicit continuity gap.
+    /// Receives source state, an enriched message, or an optional continuity notice.
+    /// Lost native positions baseline at the tail; missed history is not replayed.
     /// Only one receive may be pending. Cancelling a receive leaves the watch active.
     /// # Errors
     /// Reports concurrent receive, upstream, lag, and decode failures.

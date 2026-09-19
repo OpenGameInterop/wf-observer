@@ -30,6 +30,14 @@ successful layout validation; they cover acquisition and state changes.
 Transport tests use synthetic provider publications. These tests do not establish
 compatibility with a game executable.
 
+With one supported Warframe process running and logged in, the opt-in mastery
+smoke test checks validated acquisition and reports rank, point totals, retained
+item count, and read cost:
+
+```bash
+cargo test --locked -p provider-warframe --test live_mastery -- --ignored --nocapture
+```
+
 ## Generated bindings
 
 Install [BoltFFI](https://www.boltffi.dev/) and the toolchain for each target:

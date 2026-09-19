@@ -1,10 +1,13 @@
 mod chat;
 mod currencies;
+mod intrinsics;
 mod inventory;
+mod mastery;
 mod player;
 mod relic_rewards;
 mod screens;
 mod service;
+mod star_chart;
 
 pub use service::Service;
 
@@ -12,11 +15,11 @@ use crate::sdk::Session;
 use dioxus::prelude::*;
 
 #[component]
-pub fn Panels(session: Session, mut mounted: Signal<[bool; 6]>) -> Element {
+pub fn Panels(session: Session, mut mounted: Signal<[bool; 9]>) -> Element {
     use_context_provider(|| session.clone());
     rsx! {
         div { class: "panel-controls",
-            for (index, name) in ["Player", "Currencies", "Inventory", "Chat", "Screens", "Relic rewards"].into_iter().enumerate() {
+            for (index, name) in ["Player", "Currencies", "Inventory", "Chat", "Screens", "Relic rewards", "Mastery", "Intrinsics", "Star Chart"].into_iter().enumerate() {
                 label { class: "toggle",
                     input { r#type: "checkbox", checked: mounted()[index], onchange: move |event| mounted.write()[index] = event.checked() }
                     "{name}"
@@ -31,6 +34,9 @@ pub fn Panels(session: Session, mut mounted: Signal<[bool; 6]>) -> Element {
             if mounted()[3] { chat::Chat {} }
             if mounted()[4] { screens::Screens {} }
             if mounted()[5] { relic_rewards::RelicRewards {} }
+            if mounted()[6] { mastery::Mastery {} }
+            if mounted()[7] { intrinsics::Intrinsics {} }
+            if mounted()[8] { star_chart::StarChart {} }
         }
     }
 }

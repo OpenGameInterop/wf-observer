@@ -17,6 +17,7 @@ pub(super) struct SharedLayouts {
     pub(super) login: CachedCheck,
     pub(super) strings: CachedCheck,
     pub(super) items: CachedCheck,
+    pub(super) inventory_owner: CachedCheck,
 }
 
 impl SharedLayouts {
@@ -26,7 +27,45 @@ impl SharedLayouts {
             login: CachedCheck::Passed(()),
             strings: CachedCheck::Passed(()),
             items: CachedCheck::Passed(()),
+            inventory_owner: CachedCheck::Passed(()),
         }
+    }
+
+    pub(super) fn inventory_owner(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.inventory_owner
+            .validate(now, "inventory ownership", || {
+                let mut reader = provider_sdk::memory::TargetReader::new(
+                    memory,
+                    image.base,
+                    image.actual.image_size,
+                    crate::target::READ_LIMITS,
+                )?;
+                crate::profile_inventory::validate_layout(&mut reader)
+            })
+    }
+    pub(super) fn string_tokens(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.strings.validate(now, "string pool", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::string_pool::validate_string_pool_layout(
+                &mut reader,
+                crate::string_pool::facts::STRINGS,
+            )
+        })
     }
     pub(super) fn item_paths(
         &mut self,
@@ -34,13 +73,9 @@ impl SharedLayouts {
         image: Executable,
         now: Duration,
     ) -> Result<(), Retry> {
-        use crate::{item_type, string_pool, target::READ_LIMITS};
+        use crate::{item_type, target::READ_LIMITS};
         use provider_sdk::memory::TargetReader;
-        self.strings.validate(now, "string pool", || {
-            let mut reader =
-                TargetReader::new(memory, image.base, image.actual.image_size, READ_LIMITS)?;
-            string_pool::validate_string_pool_layout(&mut reader, string_pool::facts::STRINGS)
-        })?;
+        self.string_tokens(memory, image, now)?;
         self.items.validate(now, "item types", || {
             let mut reader =
                 TargetReader::new(memory, image.base, image.actual.image_size, READ_LIMITS)?;

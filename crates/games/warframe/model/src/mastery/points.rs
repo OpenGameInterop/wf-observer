@@ -1,0 +1,24 @@
+//! Exact unsigned JSON values. Unlike inventory quantities, zero is valid.
+use serde::{Deserialize, Deserializer, Serializer, de};
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde with adapter signature"
+)]
+pub(super) fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&value.to_string())
+}
+
+pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    let value = String::deserialize(deserializer)?;
+    if value.is_empty()
+        || value.len() > 20
+        || (value.len() > 1 && value.starts_with('0'))
+        || !value.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(de::Error::custom(
+            "expected a canonical unsigned decimal u64 string",
+        ));
+    }
+    value.parse().map_err(de::Error::custom)
+}

@@ -12,6 +12,9 @@ We only read memory. We never write to it or inject code.
 | Topic | Data | Type |
 | --- | --- | --- |
 | `warframe.inventory` | Item keys and quantities, grouped by inventory family. | Snapshot |
+| `warframe.mastery` | Completed rank, mastery points split by source, and retained per-item affinity. | Snapshot |
+| `warframe.intrinsics` | Railjack and Drifter branch ranks and whole unspent points. | Snapshot |
+| `warframe.star_chart` | Retained node completion counts and Steel Path completion flags. | Snapshot |
 | `warframe.currencies` | Credits, Endo, tradable and non-tradable Platinum. | Snapshot |
 | `warframe.player` | Account ID and username. | Snapshot |
 | `warframe.chat` | Channel, sender, message text and optional game-local hour/minute. | Event |
@@ -28,6 +31,12 @@ let client = wf_observer_sdk::connect_local().await?;
 let game = client.warframe().single_session().await?;
 let screens = game.screens().read().await?.screens;
 let picker = game.relic_rewards().read().await?.picker;
+let mastery = game.mastery().read().await?;
+println!("Rank {} · {} mastery points", mastery.rank, mastery.total_points);
+let intrinsics = game.intrinsics().read().await?;
+let chart = game.star_chart().read().await?;
+println!("Railjack Piloting: {}", intrinsics.railjack.piloting);
+println!("Retained completed nodes: {}", chart.nodes.len());
 let mut updates = game.relic_rewards().watch().await?.into_stream();
 # client.shutdown().await?;
 # Ok(()) }

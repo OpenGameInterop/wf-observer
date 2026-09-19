@@ -3,13 +3,14 @@ use std::collections::BTreeMap;
 use derive_more::{Error, From};
 use displaydoc::Display;
 use memory_reader::ProcessMemory;
-use provider_sdk::memory::{ObjectOffset, ReadError, TargetReader};
+use provider_sdk::memory::{ReadError, TargetReader};
 use warframe_model::{
     InventoryFamily, InventoryFamilySnapshot, InventoryItemCount, InventorySnapshot, ItemKey,
 };
 
 use crate::{
     item_type::{ItemTypeCache, ItemTypeError, facts::ITEM_TYPES},
+    profile_inventory::{INVENTORY_OWNER, VECTOR_HEADER_BYTES, read_commit_state, read_vector},
     roots::LoginIdentity,
     string_pool::StringTokenCache,
     target::READ_LIMITS,
@@ -17,7 +18,7 @@ use crate::{
 
 use super::{
     facts::INVENTORY,
-    layout::{LayoutError, VECTOR_HEADER_BYTES, decode_header, decode_records},
+    layout::{LayoutError, decode_records},
 };
 
 #[derive(Debug, Display, Error, From)]
@@ -28,8 +29,6 @@ pub(crate) enum InventoryError {
     /// inventory layout validation failed: {0}
     #[from]
     Layout(LayoutError),
-    /// inventory is rebuilding
-    Rebuilding,
     /// bundled inventory layout for {0:?} failed validation at {1}
     UnsupportedLayout(InventoryFamily, &'static str),
     /// item type resolution or validation failed: {0}
@@ -51,7 +50,8 @@ pub(crate) fn read_inventory(
 ) -> Result<InventorySnapshot, InventoryError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
     let profile_data = login.profile_data.get();
-    let inventory = reader.object_address(profile_data, INVENTORY.offset, VECTOR_HEADER_BYTES)?;
+    let inventory =
+        reader.object_address(profile_data, INVENTORY_OWNER.offset, VECTOR_HEADER_BYTES)?;
     let before = read_commit_state(&mut reader, profile_data)?;
     let mut families = Vec::with_capacity(INVENTORY.families.len());
     for facts in INVENTORY.families {
@@ -91,33 +91,4 @@ fn project_items(
         .into_iter()
         .map(|(item_key, quantity)| InventoryItemCount { item_key, quantity })
         .collect())
-}
-
-fn read_commit_state(
-    reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
-    profile_data: u64,
-) -> Result<[u8; 24], InventoryError> {
-    if reader.read_object_u8(profile_data, INVENTORY.force_update)? != 0 {
-        return Err(InventoryError::Rebuilding);
-    }
-    Ok(reader.read_object_array(profile_data, INVENTORY.sync_tokens)?)
-}
-
-/// Validates a vector's header around its payload read.
-fn read_vector(
-    reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
-    inventory: u64,
-    vector: ObjectOffset,
-    record_bytes: u32,
-) -> Result<(u64, Vec<u8>), InventoryError> {
-    let before = reader.read_object_array::<VECTOR_HEADER_BYTES>(inventory, vector)?;
-    let header = decode_header(&before, record_bytes)?;
-    let mut payload = vec![0_u8; header.bytes as usize];
-    if !payload.is_empty() {
-        reader.read_at(header.pointer, &mut payload)?;
-    }
-    if before != reader.read_object_array::<VECTOR_HEADER_BYTES>(inventory, vector)? {
-        return Err(ReadError::changed("inventory vector header").into());
-    }
-    Ok((header.pointer, payload))
 }

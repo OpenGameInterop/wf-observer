@@ -1,4 +1,8 @@
-use crate::{item_type::ItemTypeError, roots::ResolveError, topics::InventoryError};
+use crate::{
+    item_type::ItemTypeError,
+    roots::ResolveError,
+    topics::{InventoryError, MasteryError},
+};
 use provider_sdk::UnavailableReason;
 
 impl From<&ResolveError> for UnavailableReason {
@@ -27,13 +31,24 @@ impl From<&ItemTypeError> for UnavailableReason {
 impl From<&InventoryError> for UnavailableReason {
     fn from(error: &InventoryError) -> Self {
         match error {
-            InventoryError::Rebuilding => Self::TargetNotReady,
             InventoryError::Read(error) | InventoryError::ItemType(ItemTypeError::Read(error)) => {
                 error.into()
             }
             InventoryError::UnsupportedLayout(..) => Self::UnsupportedBuild,
             _ => Self::ValidationFailed {
                 message: "inventory records failed validation".into(),
+            },
+        }
+    }
+}
+
+impl From<&MasteryError> for UnavailableReason {
+    fn from(error: &MasteryError) -> Self {
+        match error {
+            MasteryError::Read(error) => error.into(),
+            MasteryError::ItemType(error) => error.into(),
+            MasteryError::InvalidModel(_) => Self::ValidationFailed {
+                message: "mastery progression failed validation".into(),
             },
         }
     }

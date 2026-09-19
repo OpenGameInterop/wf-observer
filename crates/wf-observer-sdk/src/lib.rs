@@ -56,6 +56,28 @@
 //! ```
 //! `WarframeInventory::from_envelope(envelope)` exposes the same conversion to
 //! generated bindings. Currencies, player data, and chat provide it too.
+//!
+//! Mastery exposes the game's completed rank, point totals and raw retained affinity:
+//! ```no_run
+//! # async fn mastery(game: wf_observer_sdk::WarframeSession) -> Result<(), wf_observer_sdk::ObserverError> {
+//! let value = game.mastery().read().await?;
+//! println!("Rank {}: {} mastery points", value.rank, value.total_points);
+//! let mut updates = game.mastery().watch().await?.into_stream();
+//! # Ok(()) }
+//! ```
+//! `WarframeMastery::from_envelope` validates generic snapshots. Point totals and
+//! affinity are exact unsigned integers in typed clients and decimal strings in
+//! raw JSON. Per-item affinity can exceed maximum-rank thresholds; item metadata
+//! supplies the rules for deriving item rank and completion.
+//!
+//! Schema changes are versioned against released APIs; unreleased topics remain
+//! at schema version 1. Mastery separates `item_points`, `mission_points`,
+//! `railjack_intrinsic_points`, and `drifter_intrinsic_points`; their sum is
+//! `total_points`. Railjack mastery can include retained respec credit.
+//! `game.intrinsics()` supplies purchased branch ranks and whole unspent points.
+//! `game.star_chart()` supplies retained node counts and Steel Path completion
+//! flags. Each has independent `read`, `cached`, and `watch` methods. A retained
+//! node grants Normal completion credit; absence says nothing about accessibility.
 
 #[macro_use(derive)]
 extern crate derive_aliases;
@@ -86,6 +108,14 @@ pub use api::{
     TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe,
     WarframeChatEvent, WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession,
     connect, connect_local, create_identity, load_identity, restore_identity,
+};
+pub use api::{
+    DrifterIntrinsics, IntrinsicsCapability, IntrinsicsState, IntrinsicsWatch, RailjackIntrinsics,
+    StarChartCapability, StarChartDifficulty, StarChartNodeProgress, StarChartState,
+    StarChartWatch, WarframeIntrinsics, WarframeStarChart,
+};
+pub use api::{
+    MasteryCapability, MasteryItemProgress, MasteryState, MasteryWatch, WarframeMastery,
 };
 pub use api::{
     RelicRewardChoice, RelicRewardPicker, RelicRewardsCapability, RelicRewardsState,

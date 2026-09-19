@@ -4,7 +4,7 @@ use crate::{
 };
 use dioxus::prelude::*;
 use std::collections::VecDeque;
-use wf_observer_sdk::{CapabilityHealth, ChatObservation, ChatState};
+use wf_observer_sdk::{CapabilityHealth, ChatDirection, ChatObservation, ChatState};
 
 const DISPLAY_MESSAGES: usize = 200;
 
@@ -75,13 +75,15 @@ pub fn Chat() -> Element {
                                 article { class: "chat-message", key: "{metadata.generation}:{metadata.sequence}",
                                     header {
                                         span { class: "channel", "{message.channel:?}" }
-                                        strong { {message.sender.as_deref().unwrap_or("System")} }
+                                        span { class: "small muted", "{message.direction:?}" }
+                                        strong { {message.sender.as_deref().unwrap_or(if message.direction == ChatDirection::System { "System" } else { "Unknown author" })} }
+                                        if let Some(peer) = &message.peer { span { class: "small muted", "with {peer}" } }
                                         if let Some(time) = message.game_time { time { "{time.hour:02}:{time.minute:02}" } }
                                     }
                                     p { "{message.text}" }
                                 }
                             },
-                            ChatObservation::Gap { channel, .. } => rsx! { Notice { "{channel:?}: continuity lost. Following messages may overlap earlier ones." } },
+                            ChatObservation::Gap { channel, .. } => rsx! { Notice { "{channel:?}: position lost; retained messages skipped. Waiting for new messages." } },
                             ChatObservation::State { .. } => rsx! {},
                         }
                     }

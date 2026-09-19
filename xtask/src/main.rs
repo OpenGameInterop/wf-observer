@@ -288,10 +288,10 @@ fn run_example(
                     .arg(root.join("examples/python/console/main.py"))
                     .arg(endpoint);
             } else {
-                // Imports the generated wheel and the example without running its main function.
+                // Import the example, then check chat conversion through the generated native binding.
                 command.args([
                     "-c",
-                    "import runpy; runpy.run_path('examples/python/console/main.py')",
+                    "import runpy; runpy.run_path('examples/python/console/main.py'); runpy.run_path('examples/python/console/check_chat.py', run_name='__main__')",
                 ]);
             }
             run_example_command(&mut command, &action)

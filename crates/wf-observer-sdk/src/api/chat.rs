@@ -1,6 +1,6 @@
 use crate::api::{EnvelopeMetadata, EventEnvelope, ObserverError};
 
-pub use warframe_model::{ChatChannel, ChatMessage, ChatTime, ChatUpdate};
+pub use warframe_model::{ChatChannel, ChatDirection, ChatMessage, ChatTime, ChatUpdate};
 
 /// Typed chat update with account identity and the standard stream metadata.
 #[boltffi::data]

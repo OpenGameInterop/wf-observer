@@ -5,6 +5,8 @@ inventory, mastery, chat, screens, relic rewards, and service status through typ
 
 Each console example connects, selects the single Warframe session, reads its
 currency balances, and shuts down the client using a generated binding.
+The Python example also supports `--chat` to print enriched messages for 30 seconds
+using only a chat watch. See its [instructions](python/console/README.md).
 
 Run these commands from the repository root, log in to Warframe, and copy the
 local connection ticket from `status`:

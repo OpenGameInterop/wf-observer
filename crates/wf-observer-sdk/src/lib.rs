@@ -28,6 +28,30 @@
 //! only queries the service cache. Watches own demand until dropped or cancelled,
 //! and include initial state. Each watch has one pending receiver. Snapshot state
 //! may coalesce; chat occurrences retain order and expose explicit gaps.
+//! Chat is best-effort live delivery. Initial history and retained entries after
+//! losing a position are skipped. A new conversation includes its first observed
+//! message. Gaps need no recovery; ordinary watch errors still apply.
+//!
+//! Chat watches provide direction and private peers without a player subscription:
+//! ```no_run
+//! # async fn chat(game: wf_observer_sdk::WarframeSession) -> Result<(), wf_observer_sdk::ObserverError> {
+//! use wf_observer_sdk::ChatObservation;
+//! let watch = game.chat().watch().await?;
+//! while let Some(item) = watch.next().await? {
+//!     if let ChatObservation::Message { value, .. } = item {
+//!         println!("{:?} in {} with {:?}: {}", value.direction,
+//!             value.conversation_id, value.peer, value.text);
+//!     }
+//! }
+//! watch.shutdown().await?;
+//! # Ok(()) }
+//! ```
+//! Group conversations by source/session, account, generation and the opaque
+//! `conversation_id`. `sender` is always the author, including outgoing messages;
+//! `peer` is the other private participant when known. Public channels have IDs
+//! too, with no peer. IDs may change after removal or acquisition reset. The
+//! envelope's generation/sequence already identify emitted events. Text retains
+//! original markup; the optional clock supplies only game-local hour/minute.
 //!
 //! Remote services require an identity approved with `wf-observer peers allow <reader-id>`:
 //! ```no_run
@@ -96,8 +120,8 @@ pub mod warframe;
 mod watch;
 
 pub use api::{
-    CapabilityDescriptor, CapabilityHealth, Catalog, ChatCapability, ChatChannel, ChatMessage,
-    ChatObservation, ChatState, ChatTime, ChatUpdate, ChatWatch, CurrenciesCapability,
+    CapabilityDescriptor, CapabilityHealth, Catalog, ChatCapability, ChatChannel, ChatDirection,
+    ChatMessage, ChatObservation, ChatState, ChatTime, ChatUpdate, ChatWatch, CurrenciesCapability,
     CurrenciesState, CurrenciesWatch, CurrencyBalances, DataEnvelope, DiscoveryHealth,
     EnvelopeMetadata, EventEnvelope, GameDescriptor, InventoryCapability, InventoryFamily,
     InventoryFamilySnapshot, InventoryItemCount, InventoryState, InventoryWatch, ObserverClient,

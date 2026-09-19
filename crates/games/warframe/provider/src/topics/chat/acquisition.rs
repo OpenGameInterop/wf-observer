@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ReadError, TargetReader, read_stable};
-use warframe_model::ChatMessage;
+use warframe_model::ChatTime;
 
 use super::{
     facts::{
@@ -10,11 +10,7 @@ use super::{
     },
     layout,
 };
-use crate::{
-    native_string::{player_name, read_string},
-    roots::LoginIdentity,
-    target::READ_LIMITS,
-};
+use crate::{native_string::read_string, roots::LoginIdentity, target::READ_LIMITS};
 
 #[derive(Clone, ..Eq)]
 pub(crate) struct History {
@@ -30,13 +26,27 @@ pub(super) struct Channel {
     pub(super) entries: Vec<Entry>,
 }
 
-/// Private identity includes contents because native node addresses are recycled.
+/// Raw occurrence identity, independent of public direction/peer enrichment.
+/// Contents distinguish recycled native node addresses.
 #[derive(Clone, ..Eq)]
 pub(super) struct Entry {
     pub(super) address: u64,
     pub(super) links: Links,
-    pub(super) flags: u32,
-    pub(super) message: ChatMessage,
+    pub(super) role: u32,
+    pub(super) sender: String,
+    pub(super) text: String,
+    pub(super) game_time: Option<ChatTime>,
+}
+
+impl Entry {
+    pub(super) fn same_occurrence(&self, other: &Self) -> bool {
+        self.address == other.address
+            && self.links.previous == other.links.previous
+            && self.role == other.role
+            && self.sender == other.sender
+            && self.text == other.text
+            && self.game_time == other.game_time
+    }
 }
 
 #[derive(Debug, ..Copy, ..Eq)]
@@ -67,7 +77,7 @@ pub(crate) fn read_chat(
         let mut unchanged = true;
         for channel in &cached.channels {
             if let Some(tail) = channel.entries.last() {
-                unchanged &= read_entry(&mut reader, tail.address, &channel.key)? == *tail;
+                unchanged &= read_entry(&mut reader, tail.address)? == *tail;
             }
         }
         if unchanged && same_headers(&headers(&mut reader, sentinel)?, &first) {
@@ -92,12 +102,11 @@ pub(crate) fn read_chat(
                     if !seen.insert(current) {
                         return Err(ReadError::invalid("chat entry cycle"));
                     }
-                    let entry = read_entry(&mut reader, current, &channel.key)?;
+                    let entry = read_entry(&mut reader, current)?;
                     if entry.links.previous != previous {
                         return Err(ReadError::changed("chat entry links"));
                     }
-                    bytes += entry.message.text.len()
-                        + entry.message.sender.as_ref().map_or(0, String::len);
+                    bytes += entry.text.len() + entry.sender.len();
                     if bytes > MAX_STRING_BYTES {
                         return Err(ReadError::limit("chat strings"));
                     }
@@ -156,7 +165,8 @@ fn headers(
             return Err(ReadError::changed("chat channel links"));
         }
         let key = read_string(reader, current, CHAT.channel_name, 128)?;
-        if key.is_empty() || !keys.insert(key.clone()) {
+        // The native notification writer uses an empty key for its system bucket.
+        if !keys.insert(key.clone()) {
             return Err(ReadError::invalid("chat channel name"));
         }
         let entries = reader.object_address(current, CHAT.channel_entries, 16)?;
@@ -189,27 +199,22 @@ fn same_headers(first: &[Channel], second: &[Channel]) -> bool {
 fn read_entry(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
     address: u64,
-    key: &str,
 ) -> Result<Entry, ReadError> {
     let first = links(reader, address)?;
     let sender = read_string(reader, address, CHAT.sender, 128)?;
     let text = read_string(reader, address, CHAT.text, MAX_MESSAGE_BYTES)?;
     let time = read_string(reader, address, CHAT.timestamp, 64)?;
-    let flags = reader.read_object_u32(address, CHAT.flags)?;
+    let role = reader.read_object_u32(address, CHAT.role)?;
     if first != links(reader, address)? {
         return Err(ReadError::changed("chat entry"));
     }
-    let sender = player_name(&sender);
     Ok(Entry {
         address,
         links: first,
-        flags,
-        message: ChatMessage {
-            channel: layout::channel(key),
-            sender: (!sender.is_empty()).then(|| sender.to_owned()),
-            text,
-            game_time: layout::time(&time)?,
-        },
+        role,
+        sender,
+        text,
+        game_time: layout::time(&time)?,
     })
 }
 
@@ -257,17 +262,16 @@ mod tests {
             read_entry(
                 &mut TargetReader::new(record, 0x10000, 80, READ_LIMITS)?,
                 0x10000,
-                "S",
             )
         };
         let entry = read(&mut record)?;
-        assert_eq!(entry.message.sender.as_deref(), Some("Player"));
-        assert_eq!(entry.message.text, "<text>");
-        assert_eq!(entry.message.game_time, warframe_model::ChatTime::new(1, 2));
+        assert_eq!(entry.sender, "Player\u{e000}");
+        assert_eq!(entry.text, "<text>");
+        assert_eq!(entry.game_time, warframe_model::ChatTime::new(1, 2));
         record.0[57] = b'9';
         assert!(read(&mut record).is_err());
         record.0[71] = 15; // System message with no clock.
-        assert_eq!(read(&mut record)?.message.game_time, None);
+        assert_eq!(read(&mut record)?.game_time, None);
         record.0[55] = 0xff;
         record.0[48..52].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(matches!(

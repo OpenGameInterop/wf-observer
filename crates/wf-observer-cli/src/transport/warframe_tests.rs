@@ -13,8 +13,8 @@ use wf_observer_sdk as sdk;
 use wf_observer_sdk::raw::{
     Client, Topic,
     warframe::{
-        AccountId, ChatChannel, ChatEvent, ChatMessage, ChatTime, ChatTopic, ChatUpdate,
-        CurrencyBalances, CurrencySnapshot, InventoryFamily, InventoryFamilySnapshot,
+        AccountId, ChatChannel, ChatDirection, ChatEvent, ChatMessage, ChatTime, ChatTopic,
+        ChatUpdate, CurrencyBalances, CurrencySnapshot, InventoryFamily, InventoryFamilySnapshot,
         InventoryItemCount, InventorySnapshot, ItemKey, PlayerSnapshot, decode_chat,
         decode_currencies, decode_inventory, decode_player,
     },
@@ -188,6 +188,9 @@ fn chat_message() -> ChatUpdate {
             sender: Some("ExampleSender".into()),
             text: "Hello <Tenno>".into(),
             game_time: ChatTime::new(23, 59),
+            direction: ChatDirection::Incoming,
+            conversation_id: "conversation-1".into(),
+            peer: None,
         },
     }
 }
@@ -287,7 +290,7 @@ async fn player_and_chat_reach_typed_clients_with_independent_health() -> anyhow
         assert_eq!(concrete.account_id, ACCOUNT_ID);
         if matches!(update, ChatUpdate::Message { .. }) {
             let mut bad: sdk::EventEnvelope = event.into();
-            bad.payload_json = bad.payload_json.replace("\"hour\":23", "\"hour\":24");
+            bad.metadata.source.topic.schema_version += 1;
             assert!(sdk::WarframeChatEvent::from_envelope(bad).is_err());
         }
     }
@@ -648,6 +651,35 @@ async fn typed_reads_and_chat_cross_the_sdk_runtime_boundary() -> anyhow::Result
             break;
         }
     }
+    let expected = ChatMessage {
+        channel: ChatChannel::Direct,
+        sender: Some("Author".into()),
+        text: "<original text>".into(),
+        game_time: ChatTime::new(1, 2),
+        direction: ChatDirection::Outgoing,
+        conversation_id: "private-conversation".into(),
+        peer: Some("Someone".into()),
+    };
+    test.publish_chat(
+        ACCOUNT_ID,
+        Some(ChatUpdate::Message {
+            value: expected.clone(),
+        }),
+        false,
+    )?;
+    let received = timeout(Duration::from_secs(5), async {
+        loop {
+            match chat.next().await? {
+                Some(sdk::ChatObservation::Message {
+                    account_id, value, ..
+                }) => break anyhow::Ok((account_id, value)),
+                Some(_) => {}
+                None => anyhow::bail!("chat watch ended"),
+            }
+        }
+    })
+    .await??;
+    assert_eq!(received, (ACCOUNT_ID.to_owned(), expected));
     chat.cancel();
     chat.shutdown().await?;
     assert!(chat.current().is_err());

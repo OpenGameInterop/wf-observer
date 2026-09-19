@@ -40,8 +40,8 @@ pub(crate) fn validate_chat_layout(
             return Err(ReadError::layout("chat entry strings"));
         }
     }
-    if fields[53..] != [0x89, 0x43, displacement(CHAT.flags.get())?] {
-        return Err(ReadError::layout("chat entry flags"));
+    if fields[53..] != [0x89, 0x43, displacement(CHAT.role.get())?] {
+        return Err(ReadError::layout("chat entry role"));
     }
     // Channel name selection and entry-list selection precede the entry writes.
     if reader.read_module_array::<9>(CHAT.channel_name_reference)?
@@ -60,6 +60,44 @@ pub(crate) fn validate_chat_layout(
             != [0x48, 0x8d, 0x77, displacement(CHAT.channel_entries.get())?]
     {
         return Err(ReadError::layout("chat channel fields"));
+    }
+    validate_channel_keys(&mut reader)
+}
+
+fn validate_channel_keys(
+    reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
+) -> Result<(), ReadError> {
+    let public = reader.read_module_array::<7>(CHAT.public_prefix_reference)?;
+    let prefix = CHAT
+        .public_prefix_reference
+        .rip_target(7, &public[3..])
+        .ok_or_else(|| ReadError::layout("chat public prefix"))?;
+    if public[..3] != [0x48, 0x8d, 0x15] || reader.read_module_array::<2>(prefix)? != *b"#\0" {
+        return Err(ReadError::layout("chat public prefix"));
+    }
+    let private = reader.read_module_array::<34>(CHAT.private_key_reference)?;
+    let separator = CHAT
+        .private_key_reference
+        .rip_target(7, &private[3..7])
+        .ok_or_else(|| ReadError::layout("chat private separator"))?;
+    if private[..3] != [0x4c, 0x8d, 0x05]
+        || reader.read_module_array::<2>(separator)? != *b",\0"
+        || private[7..14] != [0x48, 0x8b, 0xd6, 0x48, 0x8d, 0x4d, 0xd0]
+        || private[19..29] != [0x48, 0x8b, 0xd0, 0x48, 0x8d, 0x4d, 0xa0, 0x4d, 0x8b, 0xc4]
+    {
+        return Err(ReadError::layout("chat private participants"));
+    }
+    for (index, target) in [(14_u8, CHAT.append_separator), (29, CHAT.append_recipient)] {
+        let call = CHAT
+            .private_key_reference
+            .checked_add(u32::from(index))
+            .ok_or_else(|| ReadError::layout("chat private append"))?;
+        let index = usize::from(index);
+        if private[index] != 0xe8
+            || call.rip_target(5, &private[index + 1..index + 5]) != Some(target)
+        {
+            return Err(ReadError::layout("chat private append"));
+        }
     }
     Ok(())
 }

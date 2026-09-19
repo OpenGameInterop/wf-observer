@@ -1,7 +1,7 @@
 use crate::raw::{Client, ClientError, Subscription, Topic, TypedData, decode_event, types};
 use warframe_model::ChatEvent;
 
-/// Newly observed chat messages and explicit source-continuity gaps.
+/// Best-effort live chat, with initial history skipped and no missed-message replay.
 pub struct ChatTopic;
 
 impl Topic for ChatTopic {
@@ -19,7 +19,7 @@ impl crate::raw::EventTopic for ChatTopic {
 /// Account identity belongs to the payload; generation and ordering to the envelope.
 ///
 /// # Errors
-/// Returns identity or payload validation errors, including invalid clock times.
+/// Returns identity or payload validation errors, including empty conversation IDs and invalid clocks.
 pub fn decode_chat(envelope: types::EventEnvelope) -> Result<TypedData<ChatEvent>, ClientError> {
     if envelope.metadata.source.game_id != "warframe" {
         return Err(ClientError::WrongTopic);
@@ -31,6 +31,8 @@ impl Client {
     /// Subscribes to new chat events. Starting/resuming acquisition baselines retained messages.
     /// Events preserve each channel's native order. State reports health;
     /// buffered events expire when their session or generation ends.
+    /// New conversations include their first observed message. Lost positions
+    /// resume at the current tail; gap events do not require recovery.
     ///
     /// # Errors
     /// Returns transport or subscription rejection errors.

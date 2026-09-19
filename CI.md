@@ -38,6 +38,15 @@ item count, and read cost:
 cargo test --locked -p provider-warframe --test live_mastery -- --ignored --nocapture
 ```
 
+The chat-only live test observes for 30 seconds, printing direction, conversation
+ID, author and peer without printing message contents. Receive a first whisper,
+reply, and open another private conversation while it runs. `WF_CHAT_TEST_SECONDS`
+can extend the observation period. Compare the reported fields with the game;
+an available stream alone does not validate every channel mapping.
+
+```bash
+cargo test --locked -p provider-warframe --test live_chat -- --ignored --nocapture
+```
 ## Generated bindings
 
 Install [BoltFFI](https://www.boltffi.dev/) and the toolchain for each target:
@@ -64,8 +73,9 @@ just example python csharp java kotlin --check
 just example swift --check
 ```
 
-This builds compiled examples and imports the Python example. It does not test
-generated clients against a running service. See the [examples](examples/README.md)
+This builds compiled examples, imports the Python example, and exercises chat
+decoding and message conversion through its generated native binding. It does not
+test generated clients against a running service. See the [examples](examples/README.md)
 for that manual check. CI selects language jobs by changed paths; Swift runs on
 macOS with the ARM64 overlay in [boltffi.ci.toml](boltffi.ci.toml).
 

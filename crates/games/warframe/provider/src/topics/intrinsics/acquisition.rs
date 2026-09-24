@@ -1,5 +1,7 @@
 use super::facts::{BLOCK, BLOCK_BYTES, POINT_SCALE};
-use crate::{profile_inventory::read_commit_state, roots::LoginIdentity, target::READ_LIMITS};
+use crate::{
+    profile_inventory::read_commit_state, roots::ProfileDataIdentity, target::READ_LIMITS,
+};
 use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ObjectOffset, ReadError, RecordView, TargetReader};
 use warframe_model::{DrifterIntrinsics, IntrinsicsSnapshot, RailjackIntrinsics};
@@ -8,10 +10,10 @@ pub(crate) fn read_intrinsics(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
 ) -> Result<IntrinsicsSnapshot, ReadError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
-    let profile = login.profile_data.get();
+    let profile = login.object.get();
     let commit = read_commit_state(&mut reader, profile)?;
     let before = reader.read_object_array::<BLOCK_BYTES>(profile, BLOCK)?;
     let value = decode(&before, login)?;
@@ -25,13 +27,13 @@ pub(crate) fn read_intrinsics(
 
 fn decode(
     bytes: &[u8; BLOCK_BYTES],
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
 ) -> Result<IntrinsicsSnapshot, ReadError> {
     let record = RecordView::new(bytes, "Intrinsic progression");
     // Each slot is an unsigned 32-bit value, including the unspent point pools.
     let word = |index: u32| record.u32(ObjectOffset::new(index * 4));
     IntrinsicsSnapshot::new(
-        login.account_id.clone(),
+        login.account.account_id.clone(),
         RailjackIntrinsics {
             unspent_points: word(0)? / POINT_SCALE,
             piloting: word(3)?,

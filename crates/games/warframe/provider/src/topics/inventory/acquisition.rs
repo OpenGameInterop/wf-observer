@@ -11,7 +11,7 @@ use warframe_model::{
 use crate::{
     item_type::{ItemTypeCache, ItemTypeError, facts::ITEM_TYPES},
     profile_inventory::{INVENTORY_OWNER, VECTOR_HEADER_BYTES, read_commit_state, read_vector},
-    roots::LoginIdentity,
+    roots::ProfileDataIdentity,
     string_pool::StringTokenCache,
     target::READ_LIMITS,
 };
@@ -44,12 +44,12 @@ pub(crate) fn read_inventory(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
     item_type_cache: &mut ItemTypeCache,
     string_cache: &mut StringTokenCache,
 ) -> Result<InventorySnapshot, InventoryError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
-    let profile_data = login.profile_data.get();
+    let profile_data = login.object.get();
     let inventory =
         reader.object_address(profile_data, INVENTORY_OWNER.offset, VECTOR_HEADER_BYTES)?;
     let before = read_commit_state(&mut reader, profile_data)?;
@@ -66,7 +66,7 @@ pub(crate) fn read_inventory(
     if before != read_commit_state(&mut reader, profile_data)? {
         return Err(ReadError::changed("inventory commit markers").into());
     }
-    InventorySnapshot::new(login.account_id.clone(), families).map_err(InventoryError::from)
+    InventorySnapshot::new(login.account.account_id.clone(), families).map_err(InventoryError::from)
 }
 
 /// Resolves native identities and combines counts that map to the same item path.

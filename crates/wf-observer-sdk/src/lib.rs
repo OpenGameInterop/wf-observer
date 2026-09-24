@@ -71,6 +71,14 @@
 //! No API automatically retargets a stale handle. [raw] supports custom
 //! topic/protocol integrations.
 //!
+//! Unavailable topics can report [`UnavailableReason::DependencyUnavailable`]:
+//! a provider-defined prerequisite label (for example, `profile data`) and a
+//! structured [`DependencyFailure`] category. Status, watches, failed reads and
+//! cache requests carry the same reason without serving stale data. The label
+//! names the first blocking prerequisite, not every downstream layout's health.
+//! Other topics continue when their own prerequisites pass. Labels are diagnostic
+//! text; use the failure category for programmatic handling.
+//!
 //! Generic envelope consumers can convert explicitly without a separate decoder:
 //! ```no_run
 //! # fn example(envelope: wf_observer_sdk::DataEnvelope) -> Result<(), wf_observer_sdk::ObserverError> {
@@ -122,16 +130,17 @@ mod watch;
 pub use api::{
     CapabilityDescriptor, CapabilityHealth, Catalog, ChatCapability, ChatChannel, ChatDirection,
     ChatMessage, ChatObservation, ChatState, ChatTime, ChatUpdate, ChatWatch, CurrenciesCapability,
-    CurrenciesState, CurrenciesWatch, CurrencyBalances, DataEnvelope, DiscoveryHealth,
-    EnvelopeMetadata, EventEnvelope, GameDescriptor, InventoryCapability, InventoryFamily,
-    InventoryFamilySnapshot, InventoryItemCount, InventoryState, InventoryWatch, ObserverClient,
-    ObserverError, ObserverIdentity, ObserverSubscription, PlayerCapability, PlayerState,
-    PlayerWatch, ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason,
-    ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef, SessionSelector,
-    SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity, TargetProcess,
-    TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus, UnavailableReason, Warframe,
-    WarframeChatEvent, WarframeCurrencies, WarframeInventory, WarframePlayer, WarframeSession,
-    connect, connect_local, create_identity, load_identity, restore_identity,
+    CurrenciesState, CurrenciesWatch, CurrencyBalances, DataEnvelope, DependencyFailure,
+    DiscoveryHealth, EnvelopeMetadata, EventEnvelope, GameDescriptor, InventoryCapability,
+    InventoryFamily, InventoryFamilySnapshot, InventoryItemCount, InventoryState, InventoryWatch,
+    ObserverClient, ObserverError, ObserverIdentity, ObserverSubscription, PlayerCapability,
+    PlayerState, PlayerWatch, ProviderDescriptor, RequestError, ResetReason, Resource,
+    ResyncReason, ServiceCursor, ServiceStatus, SessionEndReason, SessionInfo, SessionRef,
+    SessionSelector, SubscriptionEnd, SubscriptionItem, SubscriptionState, TargetActivity,
+    TargetProcess, TargetStatus, TopicRef, TopicSnapshot, TopicSource, TopicStatus,
+    UnavailableReason, Warframe, WarframeChatEvent, WarframeCurrencies, WarframeInventory,
+    WarframePlayer, WarframeSession, connect, connect_local, create_identity, load_identity,
+    restore_identity,
 };
 pub use api::{
     DrifterIntrinsics, IntrinsicsCapability, IntrinsicsState, IntrinsicsWatch, RailjackIntrinsics,

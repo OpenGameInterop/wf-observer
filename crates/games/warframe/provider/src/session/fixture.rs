@@ -76,22 +76,22 @@ impl Memory {
         let data_control = heap + 0x6_0000;
         // Fixed fixture offsets intentionally do not follow production facts.
         for (address, pointer) in [
-            (base + 0x027a_53c0, heap),
+            (base + 0x0278_a2d0, heap),
             (heap, manager),
-            (manager, base + 0x0214_ba70),
-            (base + 0x0214_ba70 + 0xb8, base + 0x0020_9260),
-            (base + 0x0214_ba70 + 0x148, base + 0x00f7_a940),
+            (manager, base + 0x0211_85f0),
+            (base + 0x0211_85f0 + 0xb8, base + 0x00a5_2ec0),
+            (base + 0x0211_85f0 + 0x148, base + 0x013f_df80),
             (manager + 0x230, vector),
             (vector, control),
             (control, profile),
-            (profile, base + 0x0215_1328),
-            (base + 0x0215_1328 + 0x18, base + 0x0024_4ee0),
-            (base + 0x0215_1328 + 0x28, base + 0x0056_ee90),
-            (base + 0x0215_1328 + 0x390, base + 0x008e_1ff0),
+            (profile, base + 0x0211_ddc8),
+            (base + 0x0211_ddc8 + 0x18, base + 0x0119_f7a0),
+            (base + 0x0211_ddc8 + 0x28, base + 0x002c_1760),
+            (base + 0x0211_ddc8 + 0x388, base + 0x0086_6c20),
             (profile + 0x1d8, 0),
             (profile + 0x208, data_control),
             (data_control, self.data()),
-            (self.data(), base + 0x0237_e5c0),
+            (self.data(), base + 0x0234_c958),
         ] {
             self.put(address, &pointer.to_le_bytes());
         }
@@ -107,19 +107,19 @@ impl Memory {
     }
 
     fn inventory(&mut self) {
-        self.put(self.data() + 0x11c60, &[0]);
-        self.put(self.data() + 0xfdc0, &[0; 24]);
+        self.put(self.data() + 0x11ff8, &[0]);
+        self.put(self.data() + 0xffe0, &[0; 24]);
         for offset in [
             0x0, 0x10, 0x20, 0x30, 0x50, 0x60, 0xb0, 0xd0, 0x100, 0x110, 0x178, 0x198, 0x1a8,
             0x1b8, 0x208, 0x228, 0x1d8, 0x1e8, 0x1c8, 0x120, 0xe0, 0x258, 0x268, 0x278, 0x288,
             0x298, 0x2f8, 0x308, 0x2a8, 0x2b8, 0x2c8, 0x2d8, 0x358, 0x368, 0x378, 0x388, 0x398,
-            0x3a8, 0x3b8, 0xae0,
+            0x3a8, 0x3b8, 0xc68,
         ] {
-            self.put(self.data() + 0xd5d0 + offset, &[0; 16]);
+            self.put(self.data() + 0xd608 + offset, &[0; 16]);
         }
         let first_type = self.heap() + 0x30_0000;
         let second_type = self.heap() + 0x31_0000;
-        let header = self.data() + 0xd5d0 + 0xd0;
+        let header = self.data() + 0xd608 + 0xd0;
         self.put(header, &self.payload().to_le_bytes());
         self.put(header + 8, &48_u32.to_le_bytes());
         self.put(header + 12, &48_u32.to_le_bytes());
@@ -130,18 +130,18 @@ impl Memory {
             let record = self.payload() + index as u64 * 16;
             let address_word = ((record + 12) >> 3).to_le_bytes();
             let address_word = u32::from_le_bytes(address_word.as_chunks::<4>().0[0]);
-            let stored = (quantity ^ address_word ^ 0xc551_98a3).rotate_right(19);
+            let stored = (quantity ^ address_word ^ 0xac7e_8740).rotate_right(19);
             self.put(record, &item.to_le_bytes());
-            self.put(record + 8, &(stored ^ 0xad84_b2ea).to_le_bytes());
+            self.put(record + 8, &(stored ^ 0x9c08_4a47).to_le_bytes());
             self.put(record + 12, &stored.to_le_bytes());
         }
         let pool = self.heap() + 0x32_0000;
         let prefix = self.heap() + 0x33_0000;
-        self.put(self.base + 0x028a_39a0, &pool.to_le_bytes());
+        self.put(self.base + 0x0288_d610, &pool.to_le_bytes());
         self.put(prefix, &1_u32.to_le_bytes());
         for (address, token) in [(first_type, 2_u32), (second_type, 3)] {
             self.put(address, &[0; 48]);
-            self.put(address, &(self.base + 0x0203_fba8).to_le_bytes());
+            self.put(address, &(self.base + 0x0200_ad18).to_le_bytes());
             self.put(address + 16, &prefix.to_le_bytes());
             self.put(address + 44, &token.to_le_bytes());
         }

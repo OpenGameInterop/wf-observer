@@ -30,20 +30,20 @@ fn string(memory: &mut Memory, at: u64, value: &str) {
 }
 
 fn local_name(memory: &mut Memory, value: &str) {
-    memory.put(BASE + 0x0215_1328 + 8, &(BASE + 0x008b_9520).to_le_bytes());
+    memory.put(BASE + 0x0211_ddc8 + 8, &(BASE + 0x0146_0580).to_le_bytes());
     string(memory, memory.heap() + 0x4_0000 + 0x50, value);
     string(memory, memory.heap() + 0x4_0000 + 0x40, "");
 }
 
 fn history(memory: &mut Memory, key: &str, entries: &[(u64, &str, &str)]) {
     // Explicit fixture offsets do not follow production facts.
-    let head = memory.data() + 0x11b10;
+    let head = memory.data() + 0x11ea8;
     let channel = memory.heap() + 0x40_0000;
     let sentinel = channel + 0x28;
     let node = |id| channel + 0x100 + id * 0x100;
     memory.put(
-        BASE + 0x0237_e5c0 + 0x248,
-        &(BASE + 0x00c2_3eb0).to_le_bytes(),
+        BASE + 0x0234_c958 + 0x248,
+        &(BASE + 0x00f0_f100).to_le_bytes(),
     );
     for (at, value) in [
         (head, channel),
@@ -179,6 +179,37 @@ fn message(output: &Output) -> TestResult<&ChatMessage> {
         return Err(format!("expected one message, got {:?}", output.events).into());
     };
     Ok(value)
+}
+
+#[test]
+fn replacing_profile_data_discards_pending_chat_even_for_the_same_account() -> TestResult {
+    let mut session = session();
+    let mut memory = memory();
+    poll(&mut session, &mut memory, 0, true)?;
+    history(&mut memory, "Alice,Me", &[(1, "Alice", "old")]);
+    assert_eq!(
+        message(&poll(&mut session, &mut memory, 1, false)?)?.text,
+        "old"
+    );
+    let replacement = memory.heap() + 0x7_0000;
+    memory.put(replacement, &memory.data().to_le_bytes());
+    memory.put(memory.heap() + 0x4_0000 + 0x208, &replacement.to_le_bytes());
+    let reset = poll(&mut session, &mut memory, 2, true)?;
+    assert_eq!(reset.resets, 1);
+    assert!(
+        reset.events.is_empty(),
+        "retained history must become a new baseline"
+    );
+    history(
+        &mut memory,
+        "Alice,Me",
+        &[(1, "Alice", "old"), (2, "Alice", "new")],
+    );
+    assert_eq!(
+        message(&poll(&mut session, &mut memory, 3, true)?)?.text,
+        "new"
+    );
+    Ok(())
 }
 
 #[test]

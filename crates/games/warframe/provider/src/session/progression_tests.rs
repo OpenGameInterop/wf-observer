@@ -14,7 +14,7 @@ fn session(base: u64) -> WarframeSession {
 
 fn memory(base: u64) -> Memory {
     let mut memory = Memory::new(base);
-    let block = memory.data() + 0x0001_66b4;
+    let block = memory.data() + 0x0001_707c;
     for (i, value) in [123_999_u32, 4500, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         .into_iter()
         .enumerate()
@@ -22,9 +22,9 @@ fn memory(base: u64) -> Memory {
         memory.put(block + i as u64 * 4, &value.to_le_bytes());
     }
     let payload = memory.heap() + 0x50_0000;
-    memory.put(memory.data() + 0xfd28, &payload.to_le_bytes());
-    memory.put(memory.data() + 0xfd30, &96_u32.to_le_bytes());
-    memory.put(memory.data() + 0xfd34, &96_u32.to_le_bytes());
+    memory.put(memory.data() + 0xff48, &payload.to_le_bytes());
+    memory.put(memory.data() + 0xff50, &96_u32.to_le_bytes());
+    memory.put(memory.data() + 0xff54, &96_u32.to_le_bytes());
     for (i, (key, count, tier)) in [("SolNode1", 8_u32, 1_u8), ("JunctionA", 0, 0)]
         .into_iter()
         .enumerate()
@@ -51,13 +51,18 @@ fn progression_is_sorted_independent_and_inactive_without_demand() -> TestResult
     for base in [0x1_4000_0000, 0x2_8000_0000] {
         let mut memory = memory(base);
         let mut session = session(base);
-        // Neither topic needs the item-type resolver or the mastery layout.
+        // Neither topic needs item types, mastery, or the embedded inventory getter.
         session.layouts.items = CachedCheck::Failed(Retry {
+            reason: UnavailableReason::UnsupportedBuild,
+            at: Duration::from_secs(5),
+        });
+        session.layouts.inventory_owner = CachedCheck::Failed(Retry {
             reason: UnavailableReason::UnsupportedBuild,
             at: Duration::from_secs(5),
         });
         let output = poll(&mut session, &mut memory, 0, &[&INTRINSICS, &STAR_CHART])?;
         assert!(output.health.is_empty());
+        assert!(!memory.reads.contains(&(base + 0x0148_fde0)));
         let intrinsics: IntrinsicsSnapshot = serde_json::from_value(output.snapshots[0].1.clone())?;
         assert_eq!(
             (
@@ -82,12 +87,12 @@ fn progression_is_sorted_independent_and_inactive_without_demand() -> TestResult
         assert!(chart.completed("JunctionA", StarChartDifficulty::Normal));
         assert!(!chart.completed("JunctionA", StarChartDifficulty::SteelPath));
         assert!(chart.completed("SolNode1", StarChartDifficulty::SteelPath));
-        assert!(!memory.reads.contains(&(memory.data() + 0xd5d0 + 0xf0)));
+        assert!(!memory.reads.contains(&(memory.data() + 0xd608 + 0xf0)));
         memory.reads.clear();
         poll(&mut session, &mut memory, 1, &[])?;
         assert!(memory.reads.is_empty());
-        memory.put(memory.data() + 0x0001_66b4, &[0; 48]);
-        memory.put(memory.data() + 0xfd28, &[0; 16]);
+        memory.put(memory.data() + 0x0001_707c, &[0; 48]);
+        memory.put(memory.data() + 0xff48, &[0; 16]);
         let empty = poll(&mut session, &mut memory, 2, &[&INTRINSICS, &STAR_CHART])?;
         assert!(empty.health.is_empty());
         let ranks: IntrinsicsSnapshot = serde_json::from_value(empty.snapshots[0].1.clone())?;
@@ -107,18 +112,18 @@ fn invalid_records_and_unstable_reads_fail_only_the_affected_topic() -> TestResu
     for case in 0..10 {
         let mut memory = memory(base);
         let payload = memory.heap() + 0x50_0000;
-        let block = memory.data() + 0x0001_66b4;
+        let block = memory.data() + 0x0001_707c;
         match case {
             0 => memory.put(block + 12, &11_u32.to_le_bytes()),
             1 => memory.omit(block + 47),
             2 => memory.change_on_nth_read(block, 2, block, &124_000_u32.to_le_bytes()),
             3 => memory.put(payload + 48, &10_u32.to_le_bytes()),
             4 => memory.put(payload, &0_u32.to_le_bytes()),
-            5 => memory.put(memory.data() + 0xfd30, &95_u32.to_le_bytes()),
+            5 => memory.put(memory.data() + 0xff50, &95_u32.to_le_bytes()),
             6 => memory.omit(payload + 95),
             7 => memory.change_on_nth_read(payload, 2, payload + 4, &9_u32.to_le_bytes()),
             8 => memory.change_on_nth_read(payload, 2, payload + 56, &[1]),
-            _ => memory.put(memory.data() + 0xfd34, &u32::MAX.to_le_bytes()),
+            _ => memory.put(memory.data() + 0xff54, &u32::MAX.to_le_bytes()),
         }
         let mut session = session(base);
         let output = poll(&mut session, &mut memory, 0, &[&INTRINSICS, &STAR_CHART])?;

@@ -3,19 +3,17 @@
 use provider_sdk::memory::{ObjectOffset, Rva, VtableSlot};
 
 #[derive(Clone, Debug, ..Eq)]
-pub(crate) struct LoginRootFacts {
+pub(crate) struct AccountRootFacts {
     /// Non-null placeholder for an absent control object; do not dereference it.
     pub(crate) shared_null_sentinel: Rva,
     pub(crate) manager: ProfileManagerFacts,
     pub(crate) profile: ActiveProfileFacts,
-    pub(crate) profile_data: ProfileDataFacts,
 }
 
-pub(crate) const LOGIN: LoginRootFacts = LoginRootFacts {
-    shared_null_sentinel: Rva::new(0x0272_f3b0),
+pub(crate) const ACCOUNT: AccountRootFacts = AccountRootFacts {
+    shared_null_sentinel: Rva::new(0x0270_83a8),
     manager: MANAGER,
     profile: PROFILE,
-    profile_data: PROFILE_DATA,
 };
 
 /// All object offsets below are relative to the manager object.
@@ -42,11 +40,11 @@ pub(crate) struct ProfileManagerFacts {
 }
 
 pub(crate) const MANAGER: ProfileManagerFacts = ProfileManagerFacts {
-    root: Rva::new(0x027a_53c0),
-    getter: Rva::new(0x0029_cc30),
-    vtable: Rva::new(0x0214_ba70),
-    lookup: Rva::new(0x0020_9260),
-    logged_in: Rva::new(0x00f7_a940),
+    root: Rva::new(0x0278_a2d0),
+    getter: Rva::new(0x0124_3dd0),
+    vtable: Rva::new(0x0211_85f0),
+    lookup: Rva::new(0x00a5_2ec0),
+    logged_in: Rva::new(0x013f_df80),
     lookup_slot: VtableSlot::new(0xb8),
     logged_in_slot: VtableSlot::new(0x148),
     state: ObjectOffset::new(0x168),
@@ -74,9 +72,9 @@ pub(crate) struct ActiveProfileFacts {
 }
 
 pub(crate) const PROFILE: ActiveProfileFacts = ActiveProfileFacts {
-    vtable: Rva::new(0x0215_1328),
-    identity_getter: Rva::new(0x0024_4ee0),
-    account_getter: Rva::new(0x0056_ee90),
+    vtable: Rva::new(0x0211_ddc8),
+    identity_getter: Rva::new(0x0119_f7a0),
+    account_getter: Rva::new(0x002c_1760),
     identity_slot: VtableSlot::new(0x18),
     account_slot: VtableSlot::new(0x28),
     selector: ObjectOffset::new(0x1d8),
@@ -98,8 +96,8 @@ pub(crate) struct ProfileDataFacts {
 }
 
 pub(crate) const PROFILE_DATA: ProfileDataFacts = ProfileDataFacts {
-    slot: VtableSlot::new(0x390),
-    getter: Rva::new(0x008e_1ff0),
+    slot: VtableSlot::new(0x388),
+    getter: Rva::new(0x0086_6c20),
     field: ObjectOffset::new(0x208),
-    vtable: Rva::new(0x0237_e5c0),
+    vtable: Rva::new(0x0234_c958),
 };

@@ -196,7 +196,7 @@ fn validate_rank_reader(
         .map_err(|_| ReadError::layout("mastery rank reader"))?;
     let shift = u8::try_from(facts.rank_codec.address_shift)
         .map_err(|_| ReadError::layout("mastery rank reader"))?;
-    let mut code = [0_u8; 119];
+    let mut code = [0_u8; 117];
     reader.read_module(facts.rank_reader, &mut code)?;
     if code[..3] != [0x48, 0x8d, 0x97]
         || code[3..7] != stored.to_le_bytes()
@@ -205,19 +205,21 @@ fn validate_rank_reader(
         || code[17..21] != [0x48, 0xc1, 0xfa, shift]
         || code[26..29] != [0x0f, 0xb7, 0x97]
         || code[29..33] != stored.to_le_bytes()
-        || code[33..37] != [0x66, 0xc1, 0xc2, rotate]
-        || code[41..44] != [0x44, 0x33, 0xc3]
-        || code[44..47] != [0x44, 0x33, 0xc5]
-        || code[87..90] != [0x66, 0x33, 0xde]
-        || code[90] != 0xb8
-        || code[91..95] != u32::from(facts.rank_codec.check_xor).to_le_bytes()
-        || code[95..98] != [0x66, 0x33, 0xdd]
-        || code[98..102] != [0x66, 0xc1, 0xcb, rotate]
-        || code[102..105] != [0x66, 0x89, 0x9f]
-        || code[105..109] != stored.to_le_bytes()
-        || code[109..112] != [0x66, 0x33, 0xd8]
-        || code[112..115] != [0x66, 0x89, 0x9f]
-        || code[115..119] != check.to_le_bytes()
+        // D1 encodes an implicit rotate count of one.
+        || rotate != 1
+        || code[33..36] != [0x66, 0xd1, 0xc2]
+        || code[40..43] != [0x44, 0x33, 0xc3]
+        || code[43..46] != [0x44, 0x33, 0xc5]
+        || code[86..89] != [0x66, 0x33, 0xde]
+        || code[89] != 0xb8
+        || code[90..94] != u32::from(facts.rank_codec.check_xor).to_le_bytes()
+        || code[94..97] != [0x66, 0x33, 0xdd]
+        || code[97..100] != [0x66, 0xd1, 0xcb]
+        || code[100..103] != [0x66, 0x89, 0x9f]
+        || code[103..107] != stored.to_le_bytes()
+        || code[107..110] != [0x66, 0x33, 0xd8]
+        || code[110..113] != [0x66, 0x89, 0x9f]
+        || code[113..117] != check.to_le_bytes()
     {
         return Err(ReadError::layout("mastery rank reader"));
     }

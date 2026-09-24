@@ -130,7 +130,7 @@ fn validated_session_reads_and_aggregates_inventory_at_unrelated_bases() -> Test
 #[test]
 fn readable_empty_vectors_publish_a_complete_empty_inventory() -> TestResult {
     let mut memory = Memory::new(0x1_4000_0000);
-    memory.put(memory.data() + 0xd5d0 + 0xd0, &[0; 16]);
+    memory.put(memory.data() + 0xd608 + 0xd0, &[0; 16]);
     let output = poll(&mut session(0x1_4000_0000), &mut memory, 0)?;
     let snapshot = only_snapshot(&output)?;
     assert_eq!(snapshot.families().len(), InventoryFamily::ALL.len());
@@ -155,7 +155,7 @@ fn account_replacement_during_acquisition_discards_output_and_resets() -> TestRe
     assert_eq!(
         output.health,
         [CapabilityHealth::Unavailable(
-            UnavailableReason::TargetNotReady
+            UnavailableReason::TargetNotReady.with_dependency("account identity")
         )]
     );
     let output = poll(&mut session, &mut memory, 2)?;
@@ -168,7 +168,7 @@ fn account_replacement_during_acquisition_discards_output_and_resets() -> TestRe
 
 #[test]
 fn rebuild_and_sync_changes_reject_samples_then_recover() -> TestResult {
-    for (offset, during_read) in [(0x11c60, false), (0x11c60, true), (0xfdc0, true)] {
+    for (offset, during_read) in [(0x11ff8, false), (0x11ff8, true), (0xffe0, true)] {
         let mut memory = Memory::new(0x1_4000_0000);
         let mut session = session(0x1_4000_0000);
         only_snapshot(&poll(&mut session, &mut memory, 0)?)?;
@@ -183,7 +183,7 @@ fn rebuild_and_sync_changes_reject_samples_then_recover() -> TestResult {
         assert_eq!(
             output.health,
             [CapabilityHealth::Unavailable(
-                UnavailableReason::TargetNotReady
+                UnavailableReason::TargetNotReady.with_dependency(INVENTORY.topic)
             )]
         );
         memory.put(marker, &[0]);
@@ -203,12 +203,18 @@ fn corrupt_counts_and_missing_record_bytes_are_not_empty_inventory() -> TestResu
         }
         let output = poll(&mut session(0x1_4000_0000), &mut memory, 0)?;
         assert!(output.snapshots.is_empty());
-        assert!(
-            matches!(output.health.as_slice(),
-                [CapabilityHealth::Unavailable(UnavailableReason::ReadFailed { .. })] if unreadable
-            ) || matches!(output.health.as_slice(),
-                [CapabilityHealth::Unavailable(UnavailableReason::ValidationFailed { .. })] if !unreadable
-            )
+        assert_eq!(
+            output.health,
+            [CapabilityHealth::Unavailable(
+                UnavailableReason::DependencyUnavailable {
+                    dependency: INVENTORY.topic.into(),
+                    failure: if unreadable {
+                        provider_sdk::DependencyFailure::ReadFailed
+                    } else {
+                        provider_sdk::DependencyFailure::ValidationFailed
+                    },
+                }
+            )]
         );
     }
     Ok(())

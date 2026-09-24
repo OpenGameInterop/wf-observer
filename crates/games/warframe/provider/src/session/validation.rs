@@ -14,7 +14,11 @@ const VALIDATION_RETRY: Duration = Duration::from_secs(5);
 /// across inventory, relic rewards and the other account topics.
 #[derive(Default)]
 pub(super) struct SharedLayouts {
-    pub(super) login: CachedCheck,
+    pub(super) account: CachedCheck,
+    pub(super) profile_data: CachedCheck,
+    pub(super) profile_commit: CachedCheck,
+    pub(super) client: CachedCheck,
+    pub(super) world: CachedCheck,
     pub(super) strings: CachedCheck,
     pub(super) items: CachedCheck,
     pub(super) inventory_owner: CachedCheck,
@@ -24,7 +28,11 @@ impl SharedLayouts {
     #[cfg(test)]
     pub(super) fn validated() -> Self {
         Self {
-            login: CachedCheck::Passed(()),
+            account: CachedCheck::Passed(()),
+            profile_data: CachedCheck::Passed(()),
+            profile_commit: CachedCheck::Passed(()),
+            client: CachedCheck::Passed(()),
+            world: CachedCheck::Passed(()),
             strings: CachedCheck::Passed(()),
             items: CachedCheck::Passed(()),
             inventory_owner: CachedCheck::Passed(()),
@@ -37,6 +45,7 @@ impl SharedLayouts {
         image: Executable,
         now: Duration,
     ) -> Result<(), Retry> {
+        self.profile_commit(memory, image, now)?;
         self.inventory_owner
             .validate(now, "inventory ownership", || {
                 let mut reader = provider_sdk::memory::TargetReader::new(
@@ -47,6 +56,54 @@ impl SharedLayouts {
                 )?;
                 crate::profile_inventory::validate_layout(&mut reader)
             })
+    }
+    pub(super) fn profile_commit(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.profile_commit.validate(now, "profile commit", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::profile_inventory::validate_commit_fields(&mut reader)
+        })
+    }
+    pub(super) fn client(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.client.validate(now, "client root", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::world::validate_client(&mut reader)
+        })
+    }
+    pub(super) fn world(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.world.validate(now, "world ownership", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::world::validate_rules(&mut reader)
+        })
     }
     pub(super) fn string_tokens(
         &mut self,
@@ -148,10 +205,11 @@ impl CachedCheck {
             check().map_err(|error| {
                 tracing::debug!(%error, validation = name, "executable layout rejected");
                 // An unreadable instruction window is not evidence of an incompatible layout.
-                match UnavailableReason::from(&error) {
+                let reason = match UnavailableReason::from(&error) {
                     reason @ UnavailableReason::ReadFailed { .. } => reason,
                     _ => UnavailableReason::UnsupportedBuild,
-                }
+                };
+                reason.with_dependency(name)
             })?;
             tracing::debug!(validation = name, "executable layout validated");
             Ok(())
@@ -251,7 +309,33 @@ mod tests {
             ),
         ] {
             let result = CachedCheck::default().validate(Duration::ZERO, "test", || Err(error));
-            assert_eq!(result.map_err(|retry| retry.reason), Err(expected));
+            assert_eq!(
+                result.map_err(|retry| retry.reason),
+                Err(expected.with_dependency("test"))
+            );
         }
+    }
+
+    #[test]
+    fn cached_failures_preserve_dependency_and_retry_deadline_for_every_consumer()
+    -> Result<(), &'static str> {
+        let mut check = CachedCheck::default();
+        let expected = UnavailableReason::UnsupportedBuild.with_dependency("profile data");
+        for second in 0..5 {
+            let Err(retry) = check.validate(Duration::from_secs(second), "profile data", || {
+                assert_eq!(second, 0, "another consumer must not accelerate retries");
+                Err(ReadError::layout("private instruction witness"))
+            }) else {
+                return Err("invalid layout passed validation");
+            };
+            assert_eq!(retry.at, VALIDATION_RETRY);
+            assert_eq!(retry.reason.with_dependency("warframe.inventory"), expected);
+        }
+        assert!(
+            check
+                .validate(VALIDATION_RETRY, "profile data", || Ok::<_, ReadError>(()))
+                .is_ok()
+        );
+        Ok(())
     }
 }

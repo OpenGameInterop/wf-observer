@@ -29,28 +29,28 @@ pub(crate) struct ChatFacts {
 }
 
 pub(crate) const CHAT: ChatFacts = ChatFacts {
-    handler: Rva::new(0x00c2_3eb0),
+    handler: Rva::new(0x00f0_f100),
     handler_slot: VtableSlot::new(0x248),
-    insert_call: Rva::new(0x00c2_4426),
-    insert: Rva::new(0x00c1_3dd0),
-    channels: ObjectOffset::new(0x11b10),
-    channels_reference: Rva::new(0x00c1_3ffd),
+    insert_call: Rva::new(0x00f0_f62c),
+    insert: Rva::new(0x00ba_a300),
+    channels: ObjectOffset::new(0x11ea8),
+    channels_reference: Rva::new(0x00ba_a4eb),
     channel_name: ObjectOffset::new(0x18),
-    channel_name_reference: Rva::new(0x00c1_4020),
+    channel_name_reference: Rva::new(0x00ba_a500),
     // Insert preserves '#' channels; private keys join sender, ',' and recipient.
-    public_prefix_reference: Rva::new(0x00c1_3e8d),
-    private_key_reference: Rva::new(0x00c1_44f5),
-    append_separator: Rva::new(0x005d_17e0),
-    append_recipient: Rva::new(0x0109_d540),
+    public_prefix_reference: Rva::new(0x00ba_a3b8),
+    private_key_reference: Rva::new(0x00ba_a98d),
+    append_separator: Rva::new(0x0015_a550),
+    append_recipient: Rva::new(0x0174_3080),
     channel_entries: ObjectOffset::new(0x28),
-    channel_entries_reference: Rva::new(0x00c1_5112),
+    channel_entries_reference: Rva::new(0x00ba_b41a),
     sender: ObjectOffset::new(0x18),
     text: ObjectOffset::new(0x28),
     timestamp: ObjectOffset::new(0x38),
     role: ObjectOffset::new(0x48),
-    entry_fields: Rva::new(0x00c1_5142),
-    string_copy: Rva::new(0x004b_9060),
-    retention_check: Rva::new(0x00c1_51da),
+    entry_fields: Rva::new(0x00ba_b440),
+    string_copy: Rva::new(0x0133_0fc0),
+    retention_check: Rva::new(0x00ba_b4ce),
 };
 
 pub(super) const MAX_CHANNELS: usize = 32;

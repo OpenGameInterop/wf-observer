@@ -1,7 +1,7 @@
 use super::validation::{CachedCheck, Executable, Retry, SharedLayouts, identify};
 use crate::{
     item_type::ItemTypeCache,
-    roots::{self, LoginIdentity, LoginResolution},
+    roots::{self, AccountIdentity, AccountResolution, ProfileDataIdentity},
     string_pool::StringTokenCache,
     topics,
 };
@@ -11,6 +11,9 @@ use provider_sdk::{
 };
 use std::time::Duration;
 use warframe_model::{ChatEvent, InventorySnapshot, MasterySnapshot, PlayerSnapshot};
+
+#[path = "profile_data.rs"]
+mod profile_data;
 
 #[cfg(test)]
 #[path = "acquisition_tests.rs"]
@@ -27,6 +30,10 @@ mod progression_tests;
 #[cfg(test)]
 #[path = "chat_tests.rs"]
 mod chat_tests;
+
+#[cfg(test)]
+#[path = "dependency_tests.rs"]
+mod dependency_tests;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 const CHAT_INTERVAL: Duration = Duration::from_millis(250);
@@ -94,7 +101,8 @@ pub(crate) struct WarframeSession {
     currencies: TopicState,
     player: TopicState,
     chat: TopicState,
-    login: Option<LoginIdentity>,
+    login: Option<AccountIdentity>,
+    profile_data: Option<ProfileDataIdentity>,
     items: ItemTypeCache,
     strings: StringTokenCache,
     chat_history: Option<topics::ChatHistory>,
@@ -170,10 +178,9 @@ impl ProviderSession for WarframeSession {
     fn poll(&mut self, context: &mut PollContext<'_>) -> Result<PollResult, ProviderError> {
         self.visual.demand(context);
         if self.visual.due(context.now) {
-            match self
-                .executable
-                .ensure(context.now, || identify(context.memory))
-            {
+            match self.executable.ensure(context.now, || {
+                identify(context.memory).map_err(|reason| reason.with_dependency("executable"))
+            }) {
                 Ok(image) => {
                     self.build_name
                         .get_or_insert_with(|| image.actual.to_string());
@@ -197,6 +204,9 @@ impl ProviderSession for WarframeSession {
         if !self.chat.demanded {
             self.clear_chat();
         }
+        if !self.data_topics().iter().any(|(_, topic)| topic.demanded) {
+            self.profile_data = None;
+        }
         if !self
             .account_topics()
             .iter()
@@ -212,17 +222,21 @@ impl ProviderSession for WarframeSession {
         {
             let ready = self
                 .executable
-                .ensure(context.now, || identify(context.memory))
+                .ensure(context.now, || {
+                    identify(context.memory).map_err(|reason| reason.with_dependency("executable"))
+                })
                 .and_then(|image| {
                     self.build_name
                         .get_or_insert_with(|| image.actual.to_string());
-                    self.layouts.login.validate(context.now, "login", || {
-                        roots::validate_login_layout(
-                            context.memory,
-                            image.base,
-                            image.actual.image_size,
-                        )
-                    })?;
+                    self.layouts
+                        .account
+                        .validate(context.now, "account identity", || {
+                            roots::validate_account_layout(
+                                context.memory,
+                                image.base,
+                                image.actual.image_size,
+                            )
+                        })?;
                     Ok(image)
                 });
             match ready {
@@ -273,64 +287,46 @@ impl WarframeSession {
         context: &mut PollContext<'_>,
         image: Executable,
     ) -> Result<(), ProviderError> {
-        let before = match roots::resolve_login(context.memory, image.base, image.actual.image_size)
-        {
-            Ok(LoginResolution::Present(login)) => login,
-            Ok(LoginResolution::Absent) => {
-                self.clear_login(context)?;
-                return self.account_unavailable(
-                    context,
-                    &Retry {
-                        reason: UnavailableReason::TargetNotReady,
-                        at: context.now.saturating_add(SAMPLE_INTERVAL),
-                    },
-                );
-            }
-            Err(error) => {
-                tracing::debug!(%error, "account roots unavailable");
-                self.clear_login(context)?;
-                return self.account_unavailable(
-                    context,
-                    &Retry {
-                        reason: (&error).into(),
-                        at: context.now.saturating_add(SAMPLE_INTERVAL),
-                    },
-                );
-            }
+        let Some((before, reset)) = self.account_before(context, image)? else {
+            return Ok(());
         };
-        let reset = self.login.as_ref().is_some_and(|old| old != &before);
-        if reset {
-            self.reset_account(context.events, context.now)?;
-            // Reset also wakes previously deferred topics; their cached failures still apply.
-            self.validate_due(context, image)?;
-        }
-        self.login = Some(before.clone());
-        let inventory = self
-            .inventory
-            .due(context.now)
-            .then(|| self.sample_inventory(context, image, &before));
-        let currencies = self.currencies.due(context.now).then(|| {
-            topics::read_currencies(context.memory, image.base, image.actual.image_size, &before)
-                .map_err(|error| read_retry(&error, context.now, CURRENCIES.topic))
-        });
-        let mastery = self
-            .mastery
-            .due(context.now)
-            .then(|| self.sample_mastery(context, image, &before));
-        let intrinsics = self.intrinsics.due(context.now).then(|| {
-            topics::read_intrinsics(context.memory, image.base, image.actual.image_size, &before)
-                .map_err(|error| read_retry(&error, context.now, INTRINSICS.topic))
-        });
-        let star_chart = self.star_chart.due(context.now).then(|| {
-            topics::read_star_chart(
-                context.memory,
-                image.base,
-                image.actual.image_size,
-                &before,
-                &mut self.strings,
-            )
-            .map_err(|error| read_retry(&error, context.now, STAR_CHART.topic))
-        });
+        let mut data_reset = reset;
+        let data = self.profile_data_before(context, image, &before, &mut data_reset)?;
+        let inventory = data
+            .as_ref()
+            .filter(|_| self.inventory.due(context.now))
+            .map(|owner| self.sample_inventory(context, image, owner));
+        let currencies = data
+            .as_ref()
+            .filter(|_| self.currencies.due(context.now))
+            .map(|owner| {
+                topics::read_currencies(context.memory, image.base, image.actual.image_size, owner)
+                    .map_err(|error| read_retry(&error, context.now, CURRENCIES.topic))
+            });
+        let mastery = data
+            .as_ref()
+            .filter(|_| self.mastery.due(context.now))
+            .map(|owner| self.sample_mastery(context, image, owner));
+        let intrinsics = data
+            .as_ref()
+            .filter(|_| self.intrinsics.due(context.now))
+            .map(|owner| {
+                topics::read_intrinsics(context.memory, image.base, image.actual.image_size, owner)
+                    .map_err(|error| read_retry(&error, context.now, INTRINSICS.topic))
+            });
+        let star_chart = data
+            .as_ref()
+            .filter(|_| self.star_chart.due(context.now))
+            .map(|owner| {
+                topics::read_star_chart(
+                    context.memory,
+                    image.base,
+                    image.actual.image_size,
+                    owner,
+                    &mut self.strings,
+                )
+                .map_err(|error| read_retry(&error, context.now, STAR_CHART.topic))
+            });
         let player_due = self.player.due(context.now);
         let name_needed = self.chat.due(context.now) && self.pending_chat.is_none();
         // Optional chat enrichment shares the coherent login sample, never a cached username.
@@ -342,48 +338,136 @@ impl WarframeSession {
             .and_then(|sample| sample.as_ref().ok())
             .map(|sample| sample.username.as_str().to_owned());
         let player = if player_due { player } else { None };
-        let chat = self.chat.due(context.now).then(|| {
-            if self.pending_chat.is_some() {
-                return Ok(None);
-            }
-            topics::read_chat(
+        let chat = data
+            .as_ref()
+            .filter(|_| self.chat.due(context.now))
+            .map(|owner| {
+                if self.pending_chat.is_some() {
+                    return Ok(None);
+                }
+                topics::read_chat(
+                    context.memory,
+                    image.base,
+                    image.actual.image_size,
+                    owner,
+                    self.chat_history.as_ref(),
+                )
+                .map_err(|error| read_retry(&error, context.now, CHAT.topic))
+            });
+        let data_after = data.as_ref().map(|_| {
+            roots::resolve_profile_data(
                 context.memory,
                 image.base,
                 image.actual.image_size,
                 &before,
-                self.chat_history.as_ref(),
             )
-            .map_err(|error| read_retry(&error, context.now, CHAT.topic))
         });
         // Even a failed acquisition must not retain a previous account's data.
         // Results stay local until all account-scoped reads have completed.
-        let after = roots::resolve_login(context.memory, image.base, image.actual.image_size);
-        if !matches!(&after, Ok(LoginResolution::Present(login)) if login == &before) {
-            if !reset {
-                self.reset_account(context.events, context.now)?;
-            }
-            self.login = None;
-            return self.account_unavailable(
+        if !self.account_unchanged(context, image, &before, reset, data_reset)? {
+            return Ok(());
+        }
+        snapshot(context, &PLAYER, &mut self.player, player)?;
+        if let Some(owner) = &data
+            && !matches!(&data_after, Some(Ok(Some(after))) if after == owner)
+        {
+            self.clear_profile_data(context, &mut data_reset)?;
+            return self.data_unavailable(
                 context,
                 &Retry {
-                    reason: UnavailableReason::TargetNotReady,
+                    reason: UnavailableReason::TargetNotReady.with_dependency("profile data"),
                     at: context.now.saturating_add(SAMPLE_INTERVAL),
                 },
             );
         }
         snapshot(context, &INVENTORY, &mut self.inventory, inventory)?;
         snapshot(context, &CURRENCIES, &mut self.currencies, currencies)?;
-        snapshot(context, &PLAYER, &mut self.player, player)?;
         snapshot(context, &MASTERY, &mut self.mastery, mastery)?;
         snapshot(context, &INTRINSICS, &mut self.intrinsics, intrinsics)?;
         snapshot(context, &STAR_CHART, &mut self.star_chart, star_chart)?;
         self.publish_chat(context, &before, chat, local_name.as_deref())
     }
 
+    fn account_before(
+        &mut self,
+        context: &mut PollContext<'_>,
+        image: Executable,
+    ) -> Result<Option<(AccountIdentity, bool)>, ProviderError> {
+        let before =
+            match roots::resolve_account(context.memory, image.base, image.actual.image_size) {
+                Ok(AccountResolution::Present(login)) => login,
+                Ok(AccountResolution::Absent) => {
+                    self.clear_login(context)?;
+                    self.account_unavailable(
+                        context,
+                        &Retry {
+                            reason: UnavailableReason::TargetNotReady
+                                .with_dependency("account identity"),
+                            at: context.now.saturating_add(SAMPLE_INTERVAL),
+                        },
+                    )?;
+                    return Ok(None);
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "account roots unavailable");
+                    self.clear_login(context)?;
+                    self.account_unavailable(
+                        context,
+                        &Retry {
+                            reason: UnavailableReason::from(&error)
+                                .with_dependency("account identity"),
+                            at: context.now.saturating_add(SAMPLE_INTERVAL),
+                        },
+                    )?;
+                    return Ok(None);
+                }
+            };
+        let reset = self.login.as_ref().is_some_and(|old| old != &before);
+        if reset {
+            self.reset_account(context.events, context.now)?;
+            // Reset also wakes previously deferred topics; their cached failures still apply.
+            self.validate_due(context, image)?;
+        }
+        self.login = Some(before.clone());
+        Ok(Some((before, reset)))
+    }
+
+    fn account_unchanged(
+        &mut self,
+        context: &mut PollContext<'_>,
+        image: Executable,
+        before: &AccountIdentity,
+        reset: bool,
+        data_reset: bool,
+    ) -> Result<bool, ProviderError> {
+        let after = roots::resolve_account(context.memory, image.base, image.actual.image_size);
+        if !matches!(&after, Ok(AccountResolution::Present(login)) if login == before) {
+            if !reset {
+                if data_reset {
+                    self.reset_player(context.events, context.now)?;
+                } else {
+                    self.reset_account(context.events, context.now)?;
+                }
+            }
+            self.login = None;
+            self.profile_data = None;
+            self.clear_chat();
+            self.account_unavailable(
+                context,
+                &Retry {
+                    reason: UnavailableReason::TargetNotReady.with_dependency("account identity"),
+                    at: context.now.saturating_add(SAMPLE_INTERVAL),
+                },
+            )?;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     fn publish_chat(
         &mut self,
         context: &mut PollContext<'_>,
-        before: &LoginIdentity,
+        before: &AccountIdentity,
         chat: Option<Result<Option<topics::ChatHistory>, Retry>>,
         local_name: Option<&str>,
     ) -> Result<(), ProviderError> {
@@ -439,7 +523,7 @@ impl WarframeSession {
         &mut self,
         context: &mut PollContext<'_>,
         image: Executable,
-        login: &LoginIdentity,
+        login: &AccountIdentity,
     ) -> Result<PlayerSnapshot, Retry> {
         self.player.layout.validate(context.now, PLAYER.topic, || {
             topics::validate_player_layout(context.memory, image.base, image.actual.image_size)
@@ -452,7 +536,7 @@ impl WarframeSession {
         &mut self,
         context: &mut PollContext<'_>,
         image: Executable,
-        login: &LoginIdentity,
+        login: &ProfileDataIdentity,
     ) -> Result<InventorySnapshot, Retry> {
         topics::read_inventory(
             context.memory,
@@ -465,7 +549,7 @@ impl WarframeSession {
         .map_err(|error| {
             tracing::debug!(%error, "inventory acquisition unavailable");
             Retry {
-                reason: (&error).into(),
+                reason: UnavailableReason::from(&error).with_dependency(INVENTORY.topic),
                 at: context.now.saturating_add(SAMPLE_INTERVAL),
             }
         })
@@ -475,7 +559,7 @@ impl WarframeSession {
         &mut self,
         context: &mut PollContext<'_>,
         image: Executable,
-        login: &LoginIdentity,
+        login: &ProfileDataIdentity,
     ) -> Result<MasterySnapshot, Retry> {
         topics::read_mastery(
             context.memory,
@@ -488,7 +572,7 @@ impl WarframeSession {
         .map_err(|error| {
             tracing::debug!(%error, "mastery acquisition unavailable");
             Retry {
-                reason: (&error).into(),
+                reason: UnavailableReason::from(&error).with_dependency(MASTERY.topic),
                 at: context.now.saturating_add(SAMPLE_INTERVAL),
             }
         })
@@ -500,6 +584,7 @@ impl WarframeSession {
         context: &mut PollContext<'_>,
         image: Executable,
     ) -> Result<(), ProviderError> {
+        self.validate_profile_data(context, image)?;
         if self.inventory.due(context.now) {
             let ready = self
                 .layouts
@@ -589,7 +674,7 @@ impl WarframeSession {
         if self.intrinsics.due(context.now) {
             let ready = self
                 .layouts
-                .inventory_owner(context.memory, image, context.now)
+                .profile_commit(context.memory, image, context.now)
                 .and_then(|()| {
                     self.intrinsics
                         .layout
@@ -608,7 +693,7 @@ impl WarframeSession {
         if self.star_chart.due(context.now) {
             let ready = self
                 .layouts
-                .inventory_owner(context.memory, image, context.now)
+                .profile_commit(context.memory, image, context.now)
                 .and_then(|()| {
                     self.layouts
                         .string_tokens(context.memory, image, context.now)
@@ -643,12 +728,27 @@ impl WarframeSession {
         events: &mut dyn provider_sdk::EventSink,
         now: Duration,
     ) -> Result<(), ProviderError> {
+        // Preserve the established publication order while resetting every
+        // account-owned topic. A data-only replacement uses the smaller group.
+        self.profile_data = None;
         self.clear_chat();
         for (cap, topic) in self.account_topics() {
             if topic.demanded {
                 events.reset(cap)?;
                 topic.next_poll = now;
             }
+        }
+        Ok(())
+    }
+
+    fn reset_player(
+        &mut self,
+        events: &mut dyn provider_sdk::EventSink,
+        now: Duration,
+    ) -> Result<(), ProviderError> {
+        if self.player.demanded {
+            events.reset(&PLAYER)?;
+            self.player.next_poll = now;
         }
         Ok(())
     }
@@ -681,7 +781,7 @@ fn read_retry(
 ) -> Retry {
     tracing::debug!(%error, topic, "topic acquisition unavailable");
     Retry {
-        reason: error.into(),
+        reason: UnavailableReason::from(error).with_dependency(topic),
         at: now.saturating_add(SAMPLE_INTERVAL),
     }
 }
@@ -808,7 +908,7 @@ mod tests {
                 &INVENTORY
             };
             let check = match failed {
-                0 => &mut session.layouts.login,
+                0 => &mut session.layouts.account,
                 1 => &mut session.layouts.strings,
                 2 => &mut session.layouts.items,
                 4 => &mut session.currencies.layout,

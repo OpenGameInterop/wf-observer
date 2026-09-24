@@ -7,10 +7,10 @@ use warframe_model::{Screen, ScreensSnapshot};
 
 use crate::world::{self, SharedObject};
 
-const OVERLAY_VTABLE: Rva = Rva::new(0x0222_2300);
-const FLASH_VTABLE: Rva = Rva::new(0x0222_1518);
-const MOVIE_VTABLE: Rva = Rva::new(0x0222_00f8);
-const VISIBILITY: Rva = Rva::new(0x0143_d6e0);
+const OVERLAY_VTABLE: Rva = Rva::new(0x021e_f380);
+const FLASH_VTABLE: Rva = Rva::new(0x021e_e588);
+const MOVIE_VTABLE: Rva = Rva::new(0x021e_d0c0);
+const VISIBILITY: Rva = Rva::new(0x0178_e190);
 const VECTOR: ObjectOffset = ObjectOffset::new(0xd0);
 const MAX_MOVIES: usize = 128;
 
@@ -19,7 +19,6 @@ const MAX_MOVIES: usize = 128;
 pub(crate) fn validate(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
 ) -> Result<(), ReadError> {
-    world::validate_client(reader)?;
     let slot = MOVIE_VTABLE
         .checked_add(0x770)
         .ok_or(ReadError::overflow("movie visibility method"))?;

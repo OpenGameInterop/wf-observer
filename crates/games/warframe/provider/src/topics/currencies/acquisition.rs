@@ -2,7 +2,7 @@ use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ReadError, RecordView, TargetReader, read_stable};
 use warframe_model::{CurrencyBalances, CurrencySnapshot};
 
-use crate::{roots::LoginIdentity, target::READ_LIMITS};
+use crate::{roots::ProfileDataIdentity, target::READ_LIMITS};
 
 use super::facts::{BalanceFacts, CODEC, CREDITS, ENDO, NON_TRADABLE_PLATINUM, TRADABLE_PLATINUM};
 
@@ -10,10 +10,10 @@ pub(crate) fn read_currencies(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
 ) -> Result<CurrencySnapshot, ReadError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
-    let profile = login.profile_data.get();
+    let profile = login.object.get();
     let balances = read_stable(
         || {
             Ok(CurrencyBalances {
@@ -30,7 +30,7 @@ pub(crate) fn read_currencies(
         || ReadError::changed("currency balances"),
     )?;
     Ok(CurrencySnapshot {
-        account_id: login.account_id.clone(),
+        account_id: login.account.account_id.clone(),
         balances,
     })
 }
@@ -76,10 +76,10 @@ mod tests {
         fn default() -> Self {
             Self {
                 words: [
-                    [0x6609_80bf, 0xcb8d_3255], // i32::MAX Credits
-                    [0x99f6_af40, 0x3472_1daa], // zero Endo
-                    [0x6609_30bf, 0xcb8d_8255], // -7 tradable Platinum
-                    [0x99f0_6f40, 0x3474_ddaa], // 50 non-tradable Platinum
+                    [0xb478_7537, 0x2870_3f70], // i32::MAX Credits
+                    [0x4b87_dac8, 0xd78f_908f], // zero Endo
+                    [0xb478_8537, 0x2870_cf70], // -7 tradable Platinum
+                    [0x4b8e_1ac8, 0xd786_508f], // 50 non-tradable Platinum
                 ],
                 reads: 0,
                 change: false,
@@ -103,7 +103,7 @@ mod tests {
                 address,
                 length: output.len(),
             };
-            let index = [0xd9a8, 0xd998, 0xd9b0, 0xd9b8]
+            let index = [0xd9f0, 0xd9e0, 0xd9f8, 0xda00]
                 .iter()
                 .position(|offset| address == PROFILE + offset)
                 .ok_or_else(error)?;
@@ -111,7 +111,7 @@ mod tests {
                 return Err(error());
             }
             if self.change && self.reads == 4 {
-                self.words[0] = [0x6609_a0bf, 0xcb8d_1255]; // i32::MAX - 1
+                self.words[0] = [0xb478_5537, 0x2870_1f70]; // i32::MAX - 1
             }
             output[..4].copy_from_slice(&self.words[index][0].to_le_bytes());
             output[4..].copy_from_slice(&self.words[index][1].to_le_bytes());
@@ -124,19 +124,21 @@ mod tests {
     fn four_balances_must_be_readable_intact_and_unchanged()
     -> Result<(), Box<dyn std::error::Error>> {
         let object = ObjectIdentity::new(PROFILE).ok_or("invalid address")?;
-        let login = LoginIdentity {
-            account_id: AccountId::new("0123456789abcdef01234567")?,
-            manager_control: object,
-            manager: object,
-            profile_control: object,
-            profile: object,
-            profile_data_control: object,
-            profile_data: object,
+        let login = ProfileDataIdentity {
+            account: crate::roots::AccountIdentity {
+                account_id: AccountId::new("0123456789abcdef01234567")?,
+                manager_control: object,
+                manager: object,
+                profile_control: object,
+                profile: object,
+            },
+            control: object,
+            object,
         };
         let sample = |memory: &mut Balances| read_currencies(memory, 0x1_4000_0000, 0x1000, &login);
         let mut memory = Balances::default();
         let snapshot = sample(&mut memory)?;
-        assert_eq!(snapshot.account_id, login.account_id);
+        assert_eq!(snapshot.account_id, login.account.account_id);
         assert_eq!(
             snapshot.balances,
             CurrencyBalances {

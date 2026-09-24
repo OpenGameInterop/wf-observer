@@ -11,8 +11,8 @@ use zeroize::Zeroizing;
 use crate::target::READ_LIMITS;
 
 use super::{
-    LoginIdentity, ObjectIdentity,
-    facts::{ActiveProfileFacts, LOGIN, LoginRootFacts, ProfileManagerFacts},
+    AccountIdentity, ObjectIdentity, ProfileDataIdentity,
+    facts::{ACCOUNT, AccountRootFacts, ActiveProfileFacts, PROFILE_DATA, ProfileManagerFacts},
 };
 
 const LOGGED_IN_MANAGER_STATE: u32 = 4;
@@ -21,9 +21,9 @@ const PROFILE_VECTOR_BYTES: usize = MAX_PROFILE_CONTROLS * size_of::<u64>();
 
 /// Result of login-root acquisition; repeated resolutions must agree before use.
 #[derive(Clone, Debug, ..Eq)]
-pub(crate) enum LoginResolution {
+pub(crate) enum AccountResolution {
     Absent,
-    Present(LoginIdentity),
+    Present(AccountIdentity),
 }
 
 /// Failure while validating or resolving the login-owned object graph.
@@ -43,39 +43,39 @@ pub(crate) enum ResolveError {
     AmbiguousProfile,
 }
 
-pub(crate) fn resolve_login(
+pub(crate) fn resolve_account(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
-) -> Result<LoginResolution, ResolveError> {
+) -> Result<AccountResolution, ResolveError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
     // Compare the ownership identities (or Absent) from two full traversals,
     // not every intermediate byte.
     read_stable(
-        || resolve_once(&mut reader, &LOGIN),
+        || resolve_once(&mut reader, &ACCOUNT),
         || ResolveError::from(ReadError::changed("login roots")),
     )
 }
 
-pub(crate) fn validate_login_layout(
+pub(crate) fn validate_account_layout(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
 ) -> Result<(), ResolveError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
-    validate_layout(&mut reader, &LOGIN)
+    validate_layout(&mut reader, &ACCOUNT)
 }
 
 fn resolve_once(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
-    facts: &LoginRootFacts,
-) -> Result<LoginResolution, ResolveError> {
+    facts: &AccountRootFacts,
+) -> Result<AccountResolution, ResolveError> {
     let manager_root = reader.module_address(facts.manager.root, size_of::<u64>())?;
     let manager_control = reader.read_u64(manager_root)?;
     let sentinel = reader.module_address(facts.shared_null_sentinel, 1)?;
     let Some((manager_control, manager)) = read_control_target(reader, manager_control, sentinel)?
     else {
-        return Ok(LoginResolution::Absent);
+        return Ok(AccountResolution::Absent);
     };
     // Readable memory alone does not identify a manager. Require the expected
     // vtable and function entries before interpreting its state and profile list.
@@ -98,44 +98,72 @@ fn resolve_once(
         "profile manager login slot",
     )?;
     if reader.read_object_u32(manager.get(), facts.manager.state)? != LOGGED_IN_MANAGER_STATE {
-        return Ok(LoginResolution::Absent);
+        return Ok(AccountResolution::Absent);
     }
 
     let vector = read_profile_vector(reader, manager.get(), &facts.manager)?;
     if vector.is_empty() {
-        return Ok(LoginResolution::Absent);
+        return Ok(AccountResolution::Absent);
     }
     let (profile_control, profile) = select_profile(reader, &vector, &facts.profile)?;
     let account_id = read_account_id(reader, profile.get(), facts.profile.account)?;
-
-    reader.require_vtable_slot_le64(
-        profile.get(),
-        facts.profile_data.slot,
-        facts.profile_data.getter,
-        "profile-data getter slot",
-    )?;
-    let profile_data_control_value =
-        reader.read_object_u64(profile.get(), facts.profile_data.field)?;
-    let Some((profile_data_control, profile_data)) =
-        read_control_target(reader, profile_data_control_value, sentinel)?
-    else {
-        return Ok(LoginResolution::Absent);
-    };
-    let profile_data_vtable = reader.read_u64(profile_data.get())?;
-    reader.require_module_pointer(
-        profile_data_vtable,
-        facts.profile_data.vtable,
-        "profile-data vtable",
-    )?;
-    Ok(LoginResolution::Present(LoginIdentity {
+    Ok(AccountResolution::Present(AccountIdentity {
         account_id,
         manager_control,
         manager,
         profile_control,
         profile,
-        profile_data_control,
-        profile_data,
     }))
+}
+
+/// Resolves only the data owned by an already-validated account. The caller also
+/// rechecks that account around the complete acquisition before publication.
+pub(crate) fn resolve_profile_data(
+    memory: &mut (impl ProcessMemory + ?Sized),
+    module_base: u64,
+    image_size: u32,
+    account: &AccountIdentity,
+) -> Result<Option<ProfileDataIdentity>, ResolveError> {
+    let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
+    read_stable(
+        || {
+            let facts = &PROFILE_DATA;
+            reader.require_vtable_slot_le64(
+                account.profile.get(),
+                facts.slot,
+                facts.getter,
+                "profile-data getter slot",
+            )?;
+            let control = reader.read_object_u64(account.profile.get(), facts.field)?;
+            let sentinel = reader.module_address(ACCOUNT.shared_null_sentinel, 1)?;
+            let Some((control, object)) = read_control_target(&mut reader, control, sentinel)?
+            else {
+                return Ok(None);
+            };
+            let vtable = reader.read_u64(object.get())?;
+            reader.require_module_pointer(vtable, facts.vtable, "profile-data vtable")?;
+            Ok(Some(ProfileDataIdentity {
+                account: account.clone(),
+                control,
+                object,
+            }))
+        },
+        || ResolveError::from(ReadError::changed("profile-data ownership")),
+    )
+}
+
+pub(crate) fn validate_profile_data_layout(
+    memory: &mut (impl ProcessMemory + ?Sized),
+    module_base: u64,
+    image_size: u32,
+) -> Result<(), ResolveError> {
+    let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
+    validate_dereferenced_member_getter(
+        &mut reader,
+        PROFILE_DATA.getter,
+        PROFILE_DATA.field,
+        "profile-data getter",
+    )
 }
 
 fn read_profile_vector(
@@ -229,7 +257,7 @@ fn read_account_id(
     let mut bytes = Zeroizing::new([0_u8; 24]);
     reader.read_at(storage, bytes.as_mut())?;
     // Reject a changed storage pointer/header while fetching the characters.
-    // In-place account-content changes are also compared by resolve_login's pair.
+    // In-place account-content changes are also compared by resolve_account's pair.
     let mut second_header = [0_u8; 16];
     reader.read_at(address, &mut second_header)?;
     if first_header != second_header {
@@ -263,7 +291,7 @@ fn object_identity(value: u64, location: &'static str) -> Result<ObjectIdentity,
 
 fn validate_layout(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
-    facts: &LoginRootFacts,
+    facts: &AccountRootFacts,
 ) -> Result<(), ResolveError> {
     validate_manager_getter(reader, &facts.manager)?;
     validate_member_getter(
@@ -280,13 +308,7 @@ fn validate_layout(
         facts.profile.account,
         "profile account getter",
     )?;
-    validate_manager_functions(reader, &facts.manager)?;
-    validate_dereferenced_member_getter(
-        reader,
-        facts.profile_data.getter,
-        facts.profile_data.field,
-        "profile-data getter",
-    )
+    validate_manager_functions(reader, &facts.manager)
 }
 
 fn validate_dereferenced_member_getter(

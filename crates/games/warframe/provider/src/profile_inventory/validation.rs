@@ -1,6 +1,6 @@
 //! Executable evidence for the embedded inventory and its commit markers.
-use super::INVENTORY_OWNER;
-use crate::roots::LOGIN;
+use super::{INVENTORY_OWNER, PROFILE_COMMIT};
+use crate::roots::PROFILE_DATA;
 use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ReadError, TargetReader};
 
@@ -14,18 +14,17 @@ pub(crate) fn validate_layout(
     {
         return Err(ReadError::layout("inventory getter"));
     }
-    validate_commit_fields(reader)
+    Ok(())
 }
 
-fn validate_commit_fields(
+pub(crate) fn validate_commit_fields(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
 ) -> Result<(), ReadError> {
-    let facts = INVENTORY_OWNER.commit;
+    let facts = PROFILE_COMMIT.commit;
     let constructor = reader.read_module_array::<14>(facts.constructor_vtable)?;
     // lea rax, [profile-data vtable]; lea rcx, [rdi+28h]; mov [rdi], rax.
     if constructor[..3] != [0x48, 0x8d, 0x05]
-        || facts.constructor_vtable.rip_target(7, &constructor[3..7])
-            != Some(LOGIN.profile_data.vtable)
+        || facts.constructor_vtable.rip_target(7, &constructor[3..7]) != Some(PROFILE_DATA.vtable)
         || constructor[7..] != [0x48, 0x8d, 0x4f, 0x28, 0x48, 0x89, 0x07]
     {
         return Err(ReadError::layout("inventory coherence owner"));
@@ -33,14 +32,14 @@ fn validate_commit_fields(
     let init = reader.read_module_array::<7>(facts.force_update_init)?;
     let read = reader.read_module_array::<7>(facts.force_update_read)?;
     // The same profile-data byte is initialized and read as an unsigned byte.
-    if init[..3] != [0x44, 0x88, 0xa7]
-        || init[3..] != INVENTORY_OWNER.force_update.get().to_le_bytes()
+    if init[..3] != [0x40, 0x88, 0xaf]
+        || init[3..] != PROFILE_COMMIT.force_update.get().to_le_bytes()
         || read[..3] != [0x0f, 0xb6, 0x90]
-        || read[3..] != INVENTORY_OWNER.force_update.get().to_le_bytes()
+        || read[3..] != PROFILE_COMMIT.force_update.get().to_le_bytes()
     {
         return Err(ReadError::layout("inventory rebuild flag"));
     }
-    let sync = INVENTORY_OWNER.sync_tokens.get();
+    let sync = PROFILE_COMMIT.sync_tokens.get();
     let init = reader.read_module_array::<26>(facts.sync_tokens_init)?;
     // Two qword+dword stores initialize the adjacent 12-byte fields in that constructor.
     if init[..3] != [0x48, 0x89, 0x87]

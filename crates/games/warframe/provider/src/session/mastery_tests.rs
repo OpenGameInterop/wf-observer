@@ -22,14 +22,14 @@ pub(super) fn session(base: u64) -> WarframeSession {
 // Fixed offsets and codecs describe independent synthetic game objects.
 fn protected(memory: &mut Memory, address: u64, value: u32) {
     let [a, b, c, d, ..] = ((address + 4) >> 3).to_le_bytes();
-    let stored = (value ^ u32::from_le_bytes([a, b, c, d]) ^ 0x635b_f253).rotate_right(30);
-    memory.put(address, &(stored ^ 0xe19c_9bbd).to_le_bytes());
+    let stored = (value ^ u32::from_le_bytes([a, b, c, d]) ^ 0x8637_d1b6).rotate_right(17);
+    memory.put(address, &(stored ^ 0x2c67_b217).to_le_bytes());
     memory.put(address + 4, &stored.to_le_bytes());
 }
 
 fn memory(base: u64) -> Memory {
     let mut memory = Memory::new(base);
-    let inventory = memory.data() + 0xd5d0;
+    let inventory = memory.data() + 0xd608;
     let payload = memory.heap() + 0x40_0000;
     memory.put(inventory + 0xf0, &payload.to_le_bytes());
     memory.put(inventory + 0xf8, &48_u32.to_le_bytes());
@@ -47,16 +47,16 @@ fn memory(base: u64) -> Memory {
         memory.put(record, &item.to_le_bytes());
         protected(&mut memory, record + 8, xp);
     }
-    for (offset, value) in [(0xe300, 1000), (0xe308, 2000), (0xe310, 0)] {
+    for (offset, value) in [(0xe4c0, 1000), (0xe4c8, 2000), (0xe4d0, 0)] {
         let address = memory.data() + offset;
         protected(&mut memory, address, value);
     }
-    memory.put(inventory + 0xd20, &[0]);
-    memory.put(inventory + 0xd24, &6000_u32.to_le_bytes());
-    let [a, b, ..] = ((inventory + 0x3fe) >> 3).to_le_bytes();
-    let rank = (0x0022_u16 ^ u16::from_le_bytes([a, b]) ^ 0x1575).rotate_right(5);
-    memory.put(inventory + 0x3fc, &(rank ^ 0xb80e).to_le_bytes());
-    memory.put(inventory + 0x3fe, &rank.to_le_bytes());
+    memory.put(inventory + 0xea8, &[0]);
+    memory.put(inventory + 0xeac, &6000_u32.to_le_bytes());
+    let [a, b, ..] = ((inventory + 0x40e) >> 3).to_le_bytes();
+    let rank = (0x0022_u16 ^ u16::from_le_bytes([a, b]) ^ 0x810b).rotate_right(1);
+    memory.put(inventory + 0x40c, &(rank ^ 0xe85e).to_le_bytes());
+    memory.put(inventory + 0x40e, &rank.to_le_bytes());
     memory
 }
 
@@ -161,7 +161,7 @@ fn mastery_is_independent_sorted_and_uses_retained_raw_affinity() -> TestResult 
         assert!(value.items()[0].item_key.as_str().ends_with("AlloyPlate"));
         assert_eq!(value.items()[0].affinity, 0);
         assert_eq!(value.items()[1].affinity, 219_081_020);
-        assert!(!memory.reads.contains(&(memory.data() + 0xd5d0 + 0xd0)));
+        assert!(!memory.reads.contains(&(memory.data() + 0xd608 + 0xd0)));
         memory.reads.clear();
         poll(&mut session, &mut memory, 1, &[])?;
         assert!(memory.reads.is_empty());
@@ -175,7 +175,7 @@ fn mastery_is_independent_sorted_and_uses_retained_raw_affinity() -> TestResult 
 fn empty_progression_and_totals_larger_than_u32_are_valid() -> TestResult {
     let base = 0x1_4000_0000;
     let mut memory = memory(base);
-    let inventory = memory.data() + 0xd5d0;
+    let inventory = memory.data() + 0xd608;
     memory.put(inventory + 0xf0, &[0; 16]);
     let mut session = session(base);
     assert!(
@@ -183,11 +183,11 @@ fn empty_progression_and_totals_larger_than_u32_are_valid() -> TestResult {
             .items()
             .is_empty()
     );
-    for offset in [0xe300, 0xe308, 0xe310] {
+    for offset in [0xe4c0, 0xe4c8, 0xe4d0] {
         let address = memory.data() + offset;
         protected(&mut memory, address, u32::MAX);
     }
-    memory.put(inventory + 0xd24, &u32::MAX.to_le_bytes());
+    memory.put(inventory + 0xeac, &u32::MAX.to_le_bytes());
     assert_eq!(
         snapshot(&poll(&mut session, &mut memory, 1, &[&MASTERY])?)?.total_points(),
         u64::from(u32::MAX) * 4
@@ -200,12 +200,12 @@ fn corruption_duplicates_and_partial_reads_do_not_become_empty_mastery() -> Test
     let base = 0x1_4000_0000;
     for case in 0..9 {
         let mut memory = memory(base);
-        let inventory = memory.data() + 0xd5d0;
+        let inventory = memory.data() + 0xd608;
         let payload = memory.heap() + 0x40_0000;
         match case {
             0 => memory.put(payload + 8, &[0; 4]),
-            1 => memory.put(inventory + 0x3fc, &[0; 2]),
-            2 => memory.put(memory.data() + 0xe308, &[0; 4]),
+            1 => memory.put(inventory + 0x40c, &[0; 2]),
+            2 => memory.put(memory.data() + 0xe4c8, &[0; 4]),
             3 => memory.omit(payload + 47),
             4 => memory.put(payload + 32, &(memory.heap() + 0x31_0000).to_le_bytes()),
             5 => memory.put(payload, &1_u64.to_le_bytes()),
@@ -241,28 +241,30 @@ fn rebuilding_recalculation_and_changed_samples_retry_then_recover() -> TestResu
     let base = 0x1_4000_0000;
     for case in 0..6 {
         let mut memory = memory(base);
-        let inventory = memory.data() + 0xd5d0;
+        let inventory = memory.data() + 0xd608;
         let payload = memory.heap() + 0x40_0000;
         match case {
-            0 => memory.put(inventory + 0xd20, &[1]),
-            1 => memory.put(memory.data() + 0x0001_1c60, &[1]),
-            2 => memory.change_on_read(payload, memory.data() + 0xfdc0, &[1]),
-            3 => memory.change_on_read(payload, inventory + 0xd24, &6001_u32.to_le_bytes()),
+            0 => memory.put(inventory + 0xea8, &[1]),
+            1 => memory.put(memory.data() + 0x0001_1ff8, &[1]),
+            2 => memory.change_on_read(payload, memory.data() + 0xffe0, &[1]),
+            3 => memory.change_on_read(payload, inventory + 0xeac, &6001_u32.to_le_bytes()),
             4 => memory.change_on_read(payload, inventory + 0xf8, &32_u32.to_le_bytes()),
-            _ => memory.change_on_read(payload, inventory + 0xd20, &[1]),
+            _ => memory.change_on_read(payload, inventory + 0xea8, &[1]),
         }
         let mut session = session(base);
         let output = poll(&mut session, &mut memory, 0, &[&MASTERY])?;
         assert!(output.snapshots.is_empty());
-        assert!(matches!(
-            output.health.as_slice(),
+        assert_eq!(
+            output.health,
             [(
-                "warframe.mastery",
-                CapabilityHealth::Unavailable(UnavailableReason::TargetNotReady)
+                MASTERY.topic,
+                CapabilityHealth::Unavailable(
+                    UnavailableReason::TargetNotReady.with_dependency(MASTERY.topic)
+                )
             )]
-        ));
-        memory.put(inventory + 0xd20, &[0]);
-        memory.put(memory.data() + 0x0001_1c60, &[0]);
+        );
+        memory.put(inventory + 0xea8, &[0]);
+        memory.put(memory.data() + 0x0001_1ff8, &[0]);
         snapshot(&poll(&mut session, &mut memory, 1, &[&MASTERY])?)?;
     }
     Ok(())
@@ -290,14 +292,16 @@ fn account_change_and_logout_reset_mastery_before_publication() -> TestResult {
 #[test]
 fn shared_and_mastery_layout_failures_keep_independent_retry_deadlines() -> TestResult {
     let base = 0x1_4000_0000;
-    for failed in 0..5 {
+    for failed in 0..7 {
         let mut memory = memory(base);
         let mut session = session(base);
         let check = match failed {
-            0 => &mut session.layouts.login,
+            0 => &mut session.layouts.account,
             1 => &mut session.layouts.strings,
             2 => &mut session.layouts.items,
             3 => &mut session.layouts.inventory_owner,
+            5 => &mut session.layouts.profile_data,
+            6 => &mut session.layouts.profile_commit,
             _ => &mut session.mastery.layout,
         };
         *check = CachedCheck::Failed(Retry {

@@ -22,8 +22,8 @@ pub use requests::{
     Subscribe,
 };
 pub use status::{
-    CapabilityHealth, DiscoveryHealth, ServiceStatus, SessionInfo, TargetActivity, TargetProcess,
-    TargetStatus, TopicStatus, UnavailableReason,
+    CapabilityHealth, DependencyFailure, DiscoveryHealth, ServiceStatus, SessionInfo,
+    TargetActivity, TargetProcess, TargetStatus, TopicStatus, UnavailableReason,
 };
 pub use subscription::{
     ResetReason, ResyncReason, SessionEndReason, SessionSelector, SubscriptionEnd,

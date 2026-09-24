@@ -10,7 +10,7 @@ use super::{
     },
     layout,
 };
-use crate::{native_string::read_string, roots::LoginIdentity, target::READ_LIMITS};
+use crate::{native_string::read_string, roots::ProfileDataIdentity, target::READ_LIMITS};
 
 #[derive(Clone, ..Eq)]
 pub(crate) struct History {
@@ -59,17 +59,17 @@ pub(crate) fn read_chat(
     memory: &mut (impl ProcessMemory + ?Sized),
     base: u64,
     size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
     cached: Option<&History>,
 ) -> Result<Option<History>, ReadError> {
     let mut reader = TargetReader::new(memory, base, size, READ_LIMITS)?;
     reader.require_vtable_slot_le64(
-        login.profile_data.get(),
+        login.object.get(),
         CHAT.handler_slot,
         CHAT.handler,
         "chat message handler",
     )?;
-    let sentinel = reader.object_address(login.profile_data.get(), CHAT.channels, 16)?;
+    let sentinel = reader.object_address(login.object.get(), CHAT.channels, 16)?;
     let first = headers(&mut reader, sentinel)?;
     if let Some(cached) = cached
         && same_headers(&first, &cached.channels)

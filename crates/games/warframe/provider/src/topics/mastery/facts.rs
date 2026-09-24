@@ -1,4 +1,4 @@
-//! Mastery evidence for executable 6a85c6b0-02cef000.
+//! Mastery evidence for executable 6ab2e96d-02cd8000.
 //!
 //! Located from the calculation log string and its non-item-pool caller.
 //! These codecs are specific to mastery; inventory quantities use another codec.
@@ -28,17 +28,17 @@ pub(super) struct MasteryFacts {
 
 pub(super) const MASTERY: MasteryFacts = MasteryFacts {
     non_item_xp: [
-        ObjectOffset::new(0xe300),
-        ObjectOffset::new(0xe308),
-        ObjectOffset::new(0xe310),
+        ObjectOffset::new(0xe4c0),
+        ObjectOffset::new(0xe4c8),
+        ObjectOffset::new(0xe4d0),
     ],
     non_item_xp_codec: AddressEncodedScalarFacts {
         check: ObjectOffset::new(0),
         stored: ObjectOffset::new(4),
-        rotate_left: 30,
+        rotate_left: 17,
         address_shift: 3,
-        value_xor: 0x635b_f253,
-        check_xor: 0xe19c_9bbd,
+        value_xor: 0x8637_d1b6,
+        check_xor: 0x2c67_b217,
     },
     vector: ObjectOffset::new(0xf0),
     record_bytes: 16,
@@ -46,27 +46,27 @@ pub(super) const MASTERY: MasteryFacts = MasteryFacts {
     xp: AddressEncodedScalarFacts {
         check: ObjectOffset::new(8),
         stored: ObjectOffset::new(12),
-        rotate_left: 30,
+        rotate_left: 17,
         address_shift: 3,
-        value_xor: 0x635b_f253,
-        check_xor: 0xe19c_9bbd,
+        value_xor: 0x8637_d1b6,
+        check_xor: 0x2c67_b217,
     },
-    item_xp_dirty: ObjectOffset::new(0xd20),
-    item_xp: ObjectOffset::new(0xd24),
-    rank: ObjectOffset::new(0x3fc),
+    item_xp_dirty: ObjectOffset::new(0xea8),
+    item_xp: ObjectOffset::new(0xeac),
+    rank: ObjectOffset::new(0x40c),
     rank_codec: AddressEncodedU16Facts {
         check: ObjectOffset::new(0),
         stored: ObjectOffset::new(2),
-        rotate_left: 5,
+        rotate_left: 1,
         address_shift: 3,
-        value_xor: 0x1575,
-        check_xor: 0xb80e,
+        value_xor: 0x810b,
+        check_xor: 0xe85e,
     },
-    calculation_name_reference: Rva::new(0x011f_b165),
-    calculation_name: Rva::new(0x0242_3170),
-    calculation: Rva::new(0x011f_b100),
-    calculation_reader: Rva::new(0x011f_b12c),
-    non_item_xp_reader: Rva::new(0x002f_8fb0),
-    rank_reader: Rva::new(0x011f_b29c),
-    serializer: Rva::new(0x01c1_cfff),
+    calculation_name_reference: Rva::new(0x007d_da95),
+    calculation_name: Rva::new(0x023f_1c10),
+    calculation: Rva::new(0x007d_da30),
+    calculation_reader: Rva::new(0x007d_da5c),
+    non_item_xp_reader: Rva::new(0x00a0_41d0),
+    rank_reader: Rva::new(0x007d_dbcc),
+    serializer: Rva::new(0x01bd_47bf),
 };

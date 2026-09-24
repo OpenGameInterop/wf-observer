@@ -1,7 +1,13 @@
 # Examples
 
-The [Dioxus showcase](rust/dioxus) displays player details, currencies,
-inventory, mastery, chat, screens, relic rewards, and service status through typed SDK watches.
+For a concise live check of all SDK topics, use the
+[live smoke example](../crates/wf-observer-sdk/examples/live_smoke.rs):
+
+```bash
+cargo run --quiet --locked -p wf_observer_sdk --example live_smoke
+```
+
+The [Dioxus showcase](rust/dioxus) displays all SDK topics.
 
 Each console example connects, selects the single Warframe session, reads its
 currency balances, and shuts down the client using a generated binding.

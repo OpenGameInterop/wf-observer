@@ -12,5 +12,7 @@ mod session;
 pub use error::ProviderError;
 pub use manifest::{CapabilityDescriptor, GameDescriptor, ProviderManifest, SnapshotDelivery};
 pub use provider::Provider;
-pub use publication::{CapabilityHealth, EventSink, HealthSink, UnavailableReason};
+pub use publication::{
+    CapabilityHealth, DependencyFailure, EventSink, HealthSink, UnavailableReason,
+};
 pub use session::{PollContext, PollResult, ProviderSession};

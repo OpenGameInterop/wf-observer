@@ -71,14 +71,14 @@ impl WarframeSession {
                 let reason = match other {
                     Err(error) => {
                         tracing::debug!(%error, "profile-data ownership unavailable");
-                        (&error).into()
+                        UnavailableReason::from(&error)
                     }
                     _ => UnavailableReason::TargetNotReady,
                 };
                 self.data_unavailable(
                     context,
                     &Retry {
-                        reason,
+                        reason: reason.with_dependency("profile data"),
                         at: context.now.saturating_add(SAMPLE_INTERVAL),
                     },
                 )?;

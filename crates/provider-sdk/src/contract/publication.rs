@@ -18,9 +18,59 @@ pub enum CapabilityHealth {
 pub enum UnavailableReason {
     TargetNotReady,
     UnsupportedBuild,
-    ReadFailed { message: String },
-    ValidationFailed { message: String },
-    ProviderFailed { message: String },
+    ReadFailed {
+        message: String,
+    },
+    ValidationFailed {
+        message: String,
+    },
+    ProviderFailed {
+        message: String,
+    },
+    /// A named prerequisite failed; labels must not contain target-memory data.
+    DependencyUnavailable {
+        dependency: String,
+        failure: DependencyFailure,
+    },
+}
+
+/// The failure category is retained when a provider names the blocking dependency.
+#[derive(Debug, ..Copy, ..Eq)]
+pub enum DependencyFailure {
+    TargetNotReady,
+    UnsupportedBuild,
+    ReadFailed,
+    ValidationFailed,
+    ProviderFailed,
+}
+
+impl UnavailableReason {
+    /// Returns the failure category, including for a named dependency.
+    #[must_use]
+    pub const fn failure(&self) -> DependencyFailure {
+        match self {
+            Self::TargetNotReady => DependencyFailure::TargetNotReady,
+            Self::UnsupportedBuild => DependencyFailure::UnsupportedBuild,
+            Self::ReadFailed { .. } => DependencyFailure::ReadFailed,
+            Self::ValidationFailed { .. } => DependencyFailure::ValidationFailed,
+            Self::ProviderFailed { .. } => DependencyFailure::ProviderFailed,
+            Self::DependencyUnavailable { failure, .. } => *failure,
+        }
+    }
+
+    /// Adds a provider-defined label without forwarding private error strings.
+    /// Propagation through another consumer preserves the original dependency.
+    #[must_use]
+    pub fn with_dependency(self, dependency: &'static str) -> Self {
+        if matches!(self, Self::DependencyUnavailable { .. }) {
+            self
+        } else {
+            Self::DependencyUnavailable {
+                failure: self.failure(),
+                dependency: dependency.into(),
+            }
+        }
+    }
 }
 
 /// Accepts data only for the provider's declared capabilities and bound session.

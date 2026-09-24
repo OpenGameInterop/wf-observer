@@ -373,7 +373,10 @@ fn a_picker_that_settles_after_opening_recovers_on_the_next_screen_sample() -> T
         out.health.as_slice(),
         [(
             _,
-            CapabilityHealth::Unavailable(UnavailableReason::ValidationFailed { .. })
+            CapabilityHealth::Unavailable(UnavailableReason::DependencyUnavailable {
+                failure: DependencyFailure::ValidationFailed,
+                ..
+            })
         )]
     ));
 
@@ -403,7 +406,10 @@ fn screen_transitions_retry_at_the_fastest_requested_interval() -> TestResult {
         assert!(out.values.is_empty());
         assert_eq!(out.health.len(), demand.len());
         assert!(out.health.iter().all(|(_, health)| {
-            *health == CapabilityHealth::Unavailable(UnavailableReason::TargetNotReady)
+            *health
+                == CapabilityHealth::Unavailable(
+                    UnavailableReason::TargetNotReady.with_dependency(SCREENS.topic),
+                )
         }));
 
         m.reads.clear();
@@ -437,7 +443,10 @@ fn malformed_screen_data_keeps_the_slower_retry() -> TestResult {
     assert!(out.health.iter().all(|(_, health)| {
         matches!(
             health,
-            CapabilityHealth::Unavailable(UnavailableReason::ValidationFailed { .. })
+            CapabilityHealth::Unavailable(UnavailableReason::DependencyUnavailable {
+                failure: DependencyFailure::ValidationFailed,
+                ..
+            })
         )
     }));
     m.put(MOVIE + 0xfa, &[1]);
@@ -492,7 +501,10 @@ fn pending_reward_items_keep_fast_checks_without_publishing_partial_choices() ->
             out.health.as_slice(),
             [(
                 _,
-                CapabilityHealth::Unavailable(UnavailableReason::TargetNotReady)
+                CapabilityHealth::Unavailable(UnavailableReason::DependencyUnavailable {
+                    failure: DependencyFailure::TargetNotReady,
+                    ..
+                })
             )]
         ));
     }
@@ -571,7 +583,7 @@ fn ownership_or_visibility_changes_mid_read_discard_rewards() -> TestResult {
         assert!(out.values.iter().all(|(topic, _)| *topic == SCREENS.topic));
         assert_eq!(out.resets, [RELIC_REWARDS.topic]);
         assert!(
-            matches!(out.health.as_slice(), [(topic, CapabilityHealth::Unavailable(UnavailableReason::TargetNotReady))] if *topic == RELIC_REWARDS.topic)
+            matches!(out.health.as_slice(), [(topic, CapabilityHealth::Unavailable(UnavailableReason::DependencyUnavailable { failure: DependencyFailure::TargetNotReady, .. }))] if *topic == RELIC_REWARDS.topic)
         );
     }
     Ok(())
@@ -589,7 +601,10 @@ fn account_order_changes_between_full_samples_are_rejected() -> TestResult {
         out.health.as_slice(),
         [(
             _,
-            CapabilityHealth::Unavailable(UnavailableReason::TargetNotReady)
+            CapabilityHealth::Unavailable(UnavailableReason::DependencyUnavailable {
+                failure: DependencyFailure::TargetNotReady,
+                ..
+            })
         )]
     ));
     Ok(())

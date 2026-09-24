@@ -181,6 +181,29 @@ impl HealthSink for Health<'_> {
                                 message: public_message(&message),
                             }
                         }
+                        provider_sdk::UnavailableReason::DependencyUnavailable {
+                            dependency,
+                            failure,
+                        } => wire::UnavailableReason::DependencyUnavailable {
+                            dependency: public_message(&dependency),
+                            failure: match failure {
+                                provider_sdk::DependencyFailure::TargetNotReady => {
+                                    wire::DependencyFailure::TargetNotReady
+                                }
+                                provider_sdk::DependencyFailure::UnsupportedBuild => {
+                                    wire::DependencyFailure::UnsupportedBuild
+                                }
+                                provider_sdk::DependencyFailure::ReadFailed => {
+                                    wire::DependencyFailure::ReadFailed
+                                }
+                                provider_sdk::DependencyFailure::ValidationFailed => {
+                                    wire::DependencyFailure::ValidationFailed
+                                }
+                                provider_sdk::DependencyFailure::ProviderFailed => {
+                                    wire::DependencyFailure::ProviderFailed
+                                }
+                            },
+                        },
                     },
                 }
             }

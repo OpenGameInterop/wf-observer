@@ -29,6 +29,9 @@ mod mastery_tests;
 #[path = "progression_tests.rs"]
 mod progression_tests;
 
+#[path = "dependency_tests.rs"]
+mod dependency_tests;
+
 struct TestWarframe {
     state: ServiceState,
     server: Server,

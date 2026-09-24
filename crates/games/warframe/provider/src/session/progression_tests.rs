@@ -51,13 +51,18 @@ fn progression_is_sorted_independent_and_inactive_without_demand() -> TestResult
     for base in [0x1_4000_0000, 0x2_8000_0000] {
         let mut memory = memory(base);
         let mut session = session(base);
-        // Neither topic needs the item-type resolver or the mastery layout.
+        // Neither topic needs item types, mastery, or the embedded inventory getter.
         session.layouts.items = CachedCheck::Failed(Retry {
+            reason: UnavailableReason::UnsupportedBuild,
+            at: Duration::from_secs(5),
+        });
+        session.layouts.inventory_owner = CachedCheck::Failed(Retry {
             reason: UnavailableReason::UnsupportedBuild,
             at: Duration::from_secs(5),
         });
         let output = poll(&mut session, &mut memory, 0, &[&INTRINSICS, &STAR_CHART])?;
         assert!(output.health.is_empty());
+        assert!(!memory.reads.contains(&(base + 0x00f6_f880)));
         let intrinsics: IntrinsicsSnapshot = serde_json::from_value(output.snapshots[0].1.clone())?;
         assert_eq!(
             (

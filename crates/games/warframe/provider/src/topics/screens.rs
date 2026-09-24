@@ -19,7 +19,6 @@ const MAX_MOVIES: usize = 128;
 pub(crate) fn validate(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
 ) -> Result<(), ReadError> {
-    world::validate_client(reader)?;
     let slot = MOVIE_VTABLE
         .checked_add(0x770)
         .ok_or(ReadError::overflow("movie visibility method"))?;

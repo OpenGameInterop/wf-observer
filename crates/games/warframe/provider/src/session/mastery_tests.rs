@@ -290,14 +290,16 @@ fn account_change_and_logout_reset_mastery_before_publication() -> TestResult {
 #[test]
 fn shared_and_mastery_layout_failures_keep_independent_retry_deadlines() -> TestResult {
     let base = 0x1_4000_0000;
-    for failed in 0..5 {
+    for failed in 0..7 {
         let mut memory = memory(base);
         let mut session = session(base);
         let check = match failed {
-            0 => &mut session.layouts.login,
+            0 => &mut session.layouts.account,
             1 => &mut session.layouts.strings,
             2 => &mut session.layouts.items,
             3 => &mut session.layouts.inventory_owner,
+            5 => &mut session.layouts.profile_data,
+            6 => &mut session.layouts.profile_commit,
             _ => &mut session.mastery.layout,
         };
         *check = CachedCheck::Failed(Retry {

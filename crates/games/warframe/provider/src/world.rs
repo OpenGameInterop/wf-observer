@@ -3,7 +3,7 @@
 use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ObjectOffset, ReadError, Rva, TargetReader, VtableSlot};
 
-use crate::roots::{LOGIN, ObjectIdentity};
+use crate::roots::{ACCOUNT, ObjectIdentity};
 
 pub(crate) const CLIENT_ROOT: Rva = Rva::new(0x0272_fd80);
 const CLIENT_STORAGE: Rva = Rva::new(0x0272_fcd0);
@@ -33,7 +33,7 @@ pub(crate) fn shared(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
     control: u64,
 ) -> Result<Option<SharedObject>, ReadError> {
-    if control == 0 || control == reader.module_address(LOGIN.shared_null_sentinel, 1)? {
+    if control == 0 || control == reader.module_address(ACCOUNT.shared_null_sentinel, 1)? {
         return Ok(None);
     }
     let control = identity(control)?;

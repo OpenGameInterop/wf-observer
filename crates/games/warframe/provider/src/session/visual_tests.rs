@@ -215,6 +215,21 @@ fn screens_work_without_login_and_relic_consumers_share_the_same_source() -> Tes
 }
 
 #[test]
+fn relic_rewards_need_account_identity_but_not_profile_data() -> TestResult {
+    let mut memory = memory(true);
+    memory.omit(BASE + 0x0215_1328 + 0x390);
+    memory.omit(memory.heap() + 0x4_0000 + 0x208);
+    let output = poll(&mut session(), &mut memory, &[&SCREENS, &RELIC_REWARDS], 0)?;
+    assert_eq!(output.screens()?.screens, [Screen::RelicRewards]);
+    assert!(matches!(
+        output.relic()?.picker,
+        RelicRewardPicker::Open { .. }
+    ));
+    assert!(output.health.is_empty());
+    Ok(())
+}
+
+#[test]
 fn open_picker_is_initial_state_with_order_and_duplicate_choices_preserved() -> TestResult {
     let out = poll(&mut session(), &mut memory(true), &[&RELIC_REWARDS], 0)?;
     let RelicRewardPicker::Open { choices } = out.relic()?.picker else {

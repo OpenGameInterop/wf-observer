@@ -2,7 +2,7 @@ use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ReadError, RecordView, TargetReader, read_stable};
 use warframe_model::{CurrencyBalances, CurrencySnapshot};
 
-use crate::{roots::LoginIdentity, target::READ_LIMITS};
+use crate::{roots::ProfileDataIdentity, target::READ_LIMITS};
 
 use super::facts::{BalanceFacts, CODEC, CREDITS, ENDO, NON_TRADABLE_PLATINUM, TRADABLE_PLATINUM};
 
@@ -10,10 +10,10 @@ pub(crate) fn read_currencies(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
 ) -> Result<CurrencySnapshot, ReadError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
-    let profile = login.profile_data.get();
+    let profile = login.object.get();
     let balances = read_stable(
         || {
             Ok(CurrencyBalances {
@@ -30,7 +30,7 @@ pub(crate) fn read_currencies(
         || ReadError::changed("currency balances"),
     )?;
     Ok(CurrencySnapshot {
-        account_id: login.account_id.clone(),
+        account_id: login.account.account_id.clone(),
         balances,
     })
 }
@@ -124,19 +124,21 @@ mod tests {
     fn four_balances_must_be_readable_intact_and_unchanged()
     -> Result<(), Box<dyn std::error::Error>> {
         let object = ObjectIdentity::new(PROFILE).ok_or("invalid address")?;
-        let login = LoginIdentity {
-            account_id: AccountId::new("0123456789abcdef01234567")?,
-            manager_control: object,
-            manager: object,
-            profile_control: object,
-            profile: object,
-            profile_data_control: object,
-            profile_data: object,
+        let login = ProfileDataIdentity {
+            account: crate::roots::AccountIdentity {
+                account_id: AccountId::new("0123456789abcdef01234567")?,
+                manager_control: object,
+                manager: object,
+                profile_control: object,
+                profile: object,
+            },
+            control: object,
+            object,
         };
         let sample = |memory: &mut Balances| read_currencies(memory, 0x1_4000_0000, 0x1000, &login);
         let mut memory = Balances::default();
         let snapshot = sample(&mut memory)?;
-        assert_eq!(snapshot.account_id, login.account_id);
+        assert_eq!(snapshot.account_id, login.account.account_id);
         assert_eq!(
             snapshot.balances,
             CurrencyBalances {

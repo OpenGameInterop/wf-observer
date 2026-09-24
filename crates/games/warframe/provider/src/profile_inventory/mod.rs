@@ -2,8 +2,8 @@
 mod facts;
 mod validation;
 
-pub(crate) use facts::INVENTORY_OWNER;
-pub(crate) use validation::validate_layout;
+pub(crate) use facts::{INVENTORY_OWNER, PROFILE_COMMIT};
+pub(crate) use validation::{validate_commit_fields, validate_layout};
 
 use memory_reader::ProcessMemory;
 use provider_sdk::memory::{ObjectOffset, ReadError, TargetReader};
@@ -79,10 +79,10 @@ pub(crate) fn read_commit_state(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
     profile_data: u64,
 ) -> Result<[u8; 24], ReadError> {
-    if reader.read_object_u8(profile_data, INVENTORY_OWNER.force_update)? != 0 {
+    if reader.read_object_u8(profile_data, PROFILE_COMMIT.force_update)? != 0 {
         return Err(ReadError::not_ready("profile inventory rebuild"));
     }
-    reader.read_object_array(profile_data, INVENTORY_OWNER.sync_tokens)
+    reader.read_object_array(profile_data, PROFILE_COMMIT.sync_tokens)
 }
 
 /// Validates a vector's header around its payload read.

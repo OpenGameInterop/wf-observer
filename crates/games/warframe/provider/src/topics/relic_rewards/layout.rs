@@ -12,7 +12,6 @@ const STORE_ITEM_TYPE: Rva = Rva::new(0x029f_1450);
 pub(crate) fn validate(
     reader: &mut TargetReader<'_, impl ProcessMemory + ?Sized>,
 ) -> Result<(), ReadError> {
-    crate::world::validate_rules(reader)?;
     if read::<15>(reader, OPEN, 0x57)?
         != [
             0x40, 0x38, 0x68, 0x50, 0x75, 0x0e, 0x48, 0x83, 0xc0, 0x70, 0x48, 0x3b, 0xc2, 0x75,

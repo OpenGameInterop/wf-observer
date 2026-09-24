@@ -3,19 +3,17 @@
 use provider_sdk::memory::{ObjectOffset, Rva, VtableSlot};
 
 #[derive(Clone, Debug, ..Eq)]
-pub(crate) struct LoginRootFacts {
+pub(crate) struct AccountRootFacts {
     /// Non-null placeholder for an absent control object; do not dereference it.
     pub(crate) shared_null_sentinel: Rva,
     pub(crate) manager: ProfileManagerFacts,
     pub(crate) profile: ActiveProfileFacts,
-    pub(crate) profile_data: ProfileDataFacts,
 }
 
-pub(crate) const LOGIN: LoginRootFacts = LoginRootFacts {
+pub(crate) const ACCOUNT: AccountRootFacts = AccountRootFacts {
     shared_null_sentinel: Rva::new(0x0272_f3b0),
     manager: MANAGER,
     profile: PROFILE,
-    profile_data: PROFILE_DATA,
 };
 
 /// All object offsets below are relative to the manager object.

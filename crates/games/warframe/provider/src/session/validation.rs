@@ -14,7 +14,11 @@ const VALIDATION_RETRY: Duration = Duration::from_secs(5);
 /// across inventory, relic rewards and the other account topics.
 #[derive(Default)]
 pub(super) struct SharedLayouts {
-    pub(super) login: CachedCheck,
+    pub(super) account: CachedCheck,
+    pub(super) profile_data: CachedCheck,
+    pub(super) profile_commit: CachedCheck,
+    pub(super) client: CachedCheck,
+    pub(super) world: CachedCheck,
     pub(super) strings: CachedCheck,
     pub(super) items: CachedCheck,
     pub(super) inventory_owner: CachedCheck,
@@ -24,7 +28,11 @@ impl SharedLayouts {
     #[cfg(test)]
     pub(super) fn validated() -> Self {
         Self {
-            login: CachedCheck::Passed(()),
+            account: CachedCheck::Passed(()),
+            profile_data: CachedCheck::Passed(()),
+            profile_commit: CachedCheck::Passed(()),
+            client: CachedCheck::Passed(()),
+            world: CachedCheck::Passed(()),
             strings: CachedCheck::Passed(()),
             items: CachedCheck::Passed(()),
             inventory_owner: CachedCheck::Passed(()),
@@ -37,6 +45,7 @@ impl SharedLayouts {
         image: Executable,
         now: Duration,
     ) -> Result<(), Retry> {
+        self.profile_commit(memory, image, now)?;
         self.inventory_owner
             .validate(now, "inventory ownership", || {
                 let mut reader = provider_sdk::memory::TargetReader::new(
@@ -47,6 +56,54 @@ impl SharedLayouts {
                 )?;
                 crate::profile_inventory::validate_layout(&mut reader)
             })
+    }
+    pub(super) fn profile_commit(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.profile_commit.validate(now, "profile commit", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::profile_inventory::validate_commit_fields(&mut reader)
+        })
+    }
+    pub(super) fn client(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.client.validate(now, "client root", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::world::validate_client(&mut reader)
+        })
+    }
+    pub(super) fn world(
+        &mut self,
+        memory: &mut dyn ProcessMemory,
+        image: Executable,
+        now: Duration,
+    ) -> Result<(), Retry> {
+        self.world.validate(now, "world ownership", || {
+            let mut reader = provider_sdk::memory::TargetReader::new(
+                memory,
+                image.base,
+                image.actual.image_size,
+                crate::target::READ_LIMITS,
+            )?;
+            crate::world::validate_rules(&mut reader)
+        })
     }
     pub(super) fn string_tokens(
         &mut self,

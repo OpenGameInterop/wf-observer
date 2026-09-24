@@ -182,6 +182,37 @@ fn message(output: &Output) -> TestResult<&ChatMessage> {
 }
 
 #[test]
+fn replacing_profile_data_discards_pending_chat_even_for_the_same_account() -> TestResult {
+    let mut session = session();
+    let mut memory = memory();
+    poll(&mut session, &mut memory, 0, true)?;
+    history(&mut memory, "Alice,Me", &[(1, "Alice", "old")]);
+    assert_eq!(
+        message(&poll(&mut session, &mut memory, 1, false)?)?.text,
+        "old"
+    );
+    let replacement = memory.heap() + 0x7_0000;
+    memory.put(replacement, &memory.data().to_le_bytes());
+    memory.put(memory.heap() + 0x4_0000 + 0x208, &replacement.to_le_bytes());
+    let reset = poll(&mut session, &mut memory, 2, true)?;
+    assert_eq!(reset.resets, 1);
+    assert!(
+        reset.events.is_empty(),
+        "retained history must become a new baseline"
+    );
+    history(
+        &mut memory,
+        "Alice,Me",
+        &[(1, "Alice", "old"), (2, "Alice", "new")],
+    );
+    assert_eq!(
+        message(&poll(&mut session, &mut memory, 3, true)?)?.text,
+        "new"
+    );
+    Ok(())
+}
+
+#[test]
 fn chat_only_reads_local_identity_and_preserves_authors_peers_and_ids() -> TestResult {
     let mut memory = memory();
     let mut session = session();

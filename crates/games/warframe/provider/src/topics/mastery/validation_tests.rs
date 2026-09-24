@@ -22,6 +22,7 @@ fn observed_layout_validates_at_unrelated_bases_and_rejects_changed_evidence()
             READ_LIMITS,
         )?;
         crate::profile_inventory::validate_layout(&mut reader)?;
+        crate::profile_inventory::validate_commit_fields(&mut reader)?;
         // Log reference/name, vector, XP codec, pool relation, rank codec and writer.
         for rva in [
             0x011f_b15f,
@@ -57,10 +58,15 @@ fn observed_layout_validates_at_unrelated_bases_and_rejects_changed_evidence()
                 crate::target::BUILD.image_size,
                 READ_LIMITS,
             )?;
-            assert!(matches!(
-                crate::profile_inventory::validate_layout(&mut reader),
-                Err(ReadError::LayoutMismatch { .. })
-            ));
+            assert!(
+                matches!(
+                    crate::profile_inventory::validate_layout(&mut reader),
+                    Err(ReadError::LayoutMismatch { .. })
+                ) || matches!(
+                    crate::profile_inventory::validate_commit_fields(&mut reader),
+                    Err(ReadError::LayoutMismatch { .. })
+                )
+            );
         }
         image.bytes.remove(&(base + 0x011f_b15f));
         assert!(matches!(

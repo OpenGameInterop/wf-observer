@@ -2,7 +2,7 @@ use super::{facts::MASTERY, layout::decode_records};
 use crate::{
     item_type::{ItemTypeCache, ItemTypeError, facts::ITEM_TYPES},
     profile_inventory::{INVENTORY_OWNER, VECTOR_HEADER_BYTES, read_commit_state, read_vector},
-    roots::LoginIdentity,
+    roots::ProfileDataIdentity,
     scalar::AddressEncodedScalarFacts,
     string_pool::StringTokenCache,
     target::READ_LIMITS,
@@ -29,12 +29,12 @@ pub(crate) fn read_mastery(
     memory: &mut (impl ProcessMemory + ?Sized),
     module_base: u64,
     image_size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
     items: &mut ItemTypeCache,
     strings: &mut StringTokenCache,
 ) -> Result<MasterySnapshot, MasteryError> {
     let mut reader = TargetReader::new(memory, module_base, image_size, READ_LIMITS)?;
-    let profile = login.profile_data.get();
+    let profile = login.object.get();
     let inventory = reader.object_address(profile, INVENTORY_OWNER.offset, VECTOR_HEADER_BYTES)?;
     let commit = read_commit_state(&mut reader, profile)?;
     let before = read_progression(&mut reader, profile, inventory)?;
@@ -63,7 +63,7 @@ pub(crate) fn read_mastery(
         .into_iter()
         .fold(u64::from(before.item_xp), |total, xp| total + u64::from(xp));
     Ok(MasterySnapshot::new(
-        login.account_id.clone(),
+        login.account.account_id.clone(),
         u32::from(before.rank),
         total,
         MasteryPointBreakdown {

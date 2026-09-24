@@ -158,7 +158,63 @@ fn missing_or_invalid_profile_data_keeps_player_available() -> TestResult {
         assert_eq!(output.snapshots, [PLAYER.topic]);
         assert_eq!(output.health.len(), 1);
         assert_eq!(output.health[0].0, INVENTORY.topic);
+        let expected = if invalid {
+            UnavailableReason::ReadFailed {
+                message: String::new(),
+            }
+        } else {
+            UnavailableReason::TargetNotReady
+        };
+        assert_eq!(
+            output.health[0].1,
+            CapabilityHealth::Unavailable(expected.with_dependency("profile data"))
+        );
     }
+    Ok(())
+}
+
+#[test]
+fn incompatible_account_and_client_roots_name_independent_blockers() -> TestResult {
+    use crate::session::{RELIC_REWARDS, SCREENS};
+    let mut memory = memory();
+    // Invalid instructions at the original witnesses; no current-build facts.
+    memory.put(BASE + 0x0029_cc30, &[0; 11]);
+    memory.put(BASE + 0x0001_f647, &[0; 12]);
+    let mut session = session();
+    session.layouts = SharedLayouts::default();
+    let demand = [
+        &PLAYER,
+        &INVENTORY,
+        &MASTERY,
+        &INTRINSICS,
+        &STAR_CHART,
+        &CURRENCIES,
+        &CHAT,
+        &SCREENS,
+        &RELIC_REWARDS,
+    ];
+    let output = poll(&mut session, &mut memory, &demand, 0)?;
+    assert!(output.snapshots.is_empty());
+    assert_eq!(output.health.len(), demand.len());
+    for (topic, health) in output.health {
+        let dependency = if topic == SCREENS.topic || topic == RELIC_REWARDS.topic {
+            "client root"
+        } else {
+            "account identity"
+        };
+        assert_eq!(
+            health,
+            CapabilityHealth::Unavailable(
+                UnavailableReason::UnsupportedBuild.with_dependency(dependency)
+            )
+        );
+    }
+    // No downstream layout can be blamed without reaching it.
+    assert!(matches!(
+        session.layouts.profile_data,
+        CachedCheck::Unchecked
+    ));
+    assert!(matches!(session.layouts.world, CachedCheck::Unchecked));
     Ok(())
 }
 

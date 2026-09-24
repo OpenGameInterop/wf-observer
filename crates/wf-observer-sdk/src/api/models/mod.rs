@@ -11,10 +11,10 @@ pub(crate) mod subscription;
 pub use data::{DataEnvelope, EnvelopeMetadata, EventEnvelope, TopicSnapshot};
 pub use identity::ServiceCursor;
 pub use protocol::v1::{
-    CapabilityDescriptor, CapabilityHealth, Catalog, DiscoveryHealth, GameDescriptor,
-    ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason, SessionEndReason,
-    SessionInfo, SessionRef, SessionSelector, SubscriptionEnd, TargetProcess, TopicRef,
-    TopicSource, UnavailableReason,
+    CapabilityDescriptor, CapabilityHealth, Catalog, DependencyFailure, DiscoveryHealth,
+    GameDescriptor, ProviderDescriptor, RequestError, ResetReason, Resource, ResyncReason,
+    SessionEndReason, SessionInfo, SessionRef, SessionSelector, SubscriptionEnd, TargetProcess,
+    TopicRef, TopicSource, UnavailableReason,
 };
 pub use status::{ServiceStatus, TargetActivity, TargetStatus, TopicStatus};
 pub use subscription::{SubscriptionItem, SubscriptionState};

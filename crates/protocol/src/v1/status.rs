@@ -96,4 +96,25 @@ pub enum UnavailableReason {
     ValidationFailed { message: String },
     /// provider operation failed: {message}
     ProviderFailed { message: String },
+    /// blocked by {dependency}: {failure}
+    DependencyUnavailable {
+        dependency: String,
+        failure: DependencyFailure,
+    },
+}
+
+/// Failure category for a named prerequisite, independent of any game or topic.
+#[boltffi::data]
+#[derive(Debug, displaydoc::Display, ..Copy, ..Eq, ..Serde)]
+pub enum DependencyFailure {
+    /// not ready
+    TargetNotReady,
+    /// unsupported build
+    UnsupportedBuild,
+    /// read failed
+    ReadFailed,
+    /// validation failed
+    ValidationFailed,
+    /// provider failed
+    ProviderFailed,
 }

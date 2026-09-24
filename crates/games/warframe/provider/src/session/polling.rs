@@ -178,10 +178,9 @@ impl ProviderSession for WarframeSession {
     fn poll(&mut self, context: &mut PollContext<'_>) -> Result<PollResult, ProviderError> {
         self.visual.demand(context);
         if self.visual.due(context.now) {
-            match self
-                .executable
-                .ensure(context.now, || identify(context.memory))
-            {
+            match self.executable.ensure(context.now, || {
+                identify(context.memory).map_err(|reason| reason.with_dependency("executable"))
+            }) {
                 Ok(image) => {
                     self.build_name
                         .get_or_insert_with(|| image.actual.to_string());
@@ -223,7 +222,9 @@ impl ProviderSession for WarframeSession {
         {
             let ready = self
                 .executable
-                .ensure(context.now, || identify(context.memory))
+                .ensure(context.now, || {
+                    identify(context.memory).map_err(|reason| reason.with_dependency("executable"))
+                })
                 .and_then(|image| {
                     self.build_name
                         .get_or_insert_with(|| image.actual.to_string());
@@ -374,7 +375,7 @@ impl WarframeSession {
             return self.data_unavailable(
                 context,
                 &Retry {
-                    reason: UnavailableReason::TargetNotReady,
+                    reason: UnavailableReason::TargetNotReady.with_dependency("profile data"),
                     at: context.now.saturating_add(SAMPLE_INTERVAL),
                 },
             );
@@ -400,7 +401,8 @@ impl WarframeSession {
                     self.account_unavailable(
                         context,
                         &Retry {
-                            reason: UnavailableReason::TargetNotReady,
+                            reason: UnavailableReason::TargetNotReady
+                                .with_dependency("account identity"),
                             at: context.now.saturating_add(SAMPLE_INTERVAL),
                         },
                     )?;
@@ -412,7 +414,8 @@ impl WarframeSession {
                     self.account_unavailable(
                         context,
                         &Retry {
-                            reason: (&error).into(),
+                            reason: UnavailableReason::from(&error)
+                                .with_dependency("account identity"),
                             at: context.now.saturating_add(SAMPLE_INTERVAL),
                         },
                     )?;
@@ -452,7 +455,7 @@ impl WarframeSession {
             self.account_unavailable(
                 context,
                 &Retry {
-                    reason: UnavailableReason::TargetNotReady,
+                    reason: UnavailableReason::TargetNotReady.with_dependency("account identity"),
                     at: context.now.saturating_add(SAMPLE_INTERVAL),
                 },
             )?;
@@ -546,7 +549,7 @@ impl WarframeSession {
         .map_err(|error| {
             tracing::debug!(%error, "inventory acquisition unavailable");
             Retry {
-                reason: (&error).into(),
+                reason: UnavailableReason::from(&error).with_dependency(INVENTORY.topic),
                 at: context.now.saturating_add(SAMPLE_INTERVAL),
             }
         })
@@ -569,7 +572,7 @@ impl WarframeSession {
         .map_err(|error| {
             tracing::debug!(%error, "mastery acquisition unavailable");
             Retry {
-                reason: (&error).into(),
+                reason: UnavailableReason::from(&error).with_dependency(MASTERY.topic),
                 at: context.now.saturating_add(SAMPLE_INTERVAL),
             }
         })
@@ -778,7 +781,7 @@ fn read_retry(
 ) -> Retry {
     tracing::debug!(%error, topic, "topic acquisition unavailable");
     Retry {
-        reason: error.into(),
+        reason: UnavailableReason::from(error).with_dependency(topic),
         at: now.saturating_add(SAMPLE_INTERVAL),
     }
 }

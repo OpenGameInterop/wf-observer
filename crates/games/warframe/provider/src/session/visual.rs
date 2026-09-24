@@ -1,8 +1,8 @@
 //! Shares a single screen source while keeping public topic health independent.
 
 use provider_sdk::{
-    CapabilityDescriptor, CapabilityHealth, PollContext, ProviderError, SnapshotDelivery,
-    UnavailableReason,
+    CapabilityDescriptor, CapabilityHealth, DependencyFailure, PollContext, ProviderError,
+    SnapshotDelivery, UnavailableReason,
     memory::{ReadError, TargetReader},
 };
 use std::time::Duration;
@@ -205,7 +205,7 @@ impl VisualTopics {
             } else {
                 READ_RETRY
             };
-            retry(&error, context.now.saturating_add(delay))
+            retry(&error, context.now.saturating_add(delay), SCREENS.topic)
         });
         let sample = match result {
             Ok(sample) => sample,
@@ -250,7 +250,11 @@ impl VisualTopics {
         let retry_at = acquisition.retry_at;
         let result = acquisition.before.and_then(|(login, world)| {
             if world.client != sample.owner.client {
-                return Err(retry(&ReadError::changed("reward client"), retry_at));
+                return Err(retry(
+                    &ReadError::changed("reward client"),
+                    retry_at,
+                    "world ownership",
+                ));
             }
             Ok(RelicOwner {
                 login,
@@ -292,7 +296,7 @@ impl VisualTopics {
             other => {
                 self.clear_owner(context, &mut reset)?;
                 let retry = other.err().unwrap_or(Retry {
-                    reason: UnavailableReason::TargetNotReady,
+                    reason: UnavailableReason::TargetNotReady.with_dependency("relic ownership"),
                     at: retry_at,
                 });
                 return self.relic_unavailable(context, retry);
@@ -348,14 +352,15 @@ impl VisualTopics {
                 Ok(AccountResolution::Present(login)) => login,
                 Ok(AccountResolution::Absent) => {
                     return Err(Retry {
-                        reason: UnavailableReason::TargetNotReady,
+                        reason: UnavailableReason::TargetNotReady
+                            .with_dependency("account identity"),
                         at: retry_at,
                     });
                 }
                 Err(error) => {
                     tracing::debug!(%error, "relic reward login unavailable");
                     return Err(Retry {
-                        reason: (&error).into(),
+                        reason: UnavailableReason::from(&error).with_dependency("account identity"),
                         at: retry_at,
                     });
                 }
@@ -366,8 +371,9 @@ impl VisualTopics {
             image.actual.image_size,
             READ_LIMITS,
         )
-        .map_err(|error| retry(&error, retry_at))?;
-        let world = world::resolve(&mut reader).map_err(|error| retry(&error, retry_at))?;
+        .map_err(|error| retry(&error, retry_at, "world ownership"))?;
+        let world = world::resolve(&mut reader)
+            .map_err(|error| retry(&error, retry_at, "world ownership"))?;
         Ok((login, world))
     }
 
@@ -385,10 +391,15 @@ impl VisualTopics {
                 image.actual.image_size,
                 READ_LIMITS,
             )
-            .map_err(|error| retry(&error, retry_at))?;
-            let after = screens::read(&mut reader).map_err(|error| retry(&error, retry_at))?;
+            .map_err(|error| retry(&error, retry_at, SCREENS.topic))?;
+            let after = screens::read(&mut reader)
+                .map_err(|error| retry(&error, retry_at, SCREENS.topic))?;
             if after != *sample {
-                return Err(retry(&ReadError::changed("reward screen"), retry_at));
+                return Err(retry(
+                    &ReadError::changed("reward screen"),
+                    retry_at,
+                    SCREENS.topic,
+                ));
             }
         }
         Ok(())
@@ -404,20 +415,23 @@ impl VisualTopics {
         retry_at: Duration,
     ) -> Result<RelicRewardPicker, Retry> {
         layouts.item_paths(context.memory, image, context.now)?;
-        let rules = owner
-            .world
-            .rules
-            .ok_or_else(|| retry(&ReadError::changed("reward world"), retry_at))?;
+        let rules = owner.world.rules.ok_or_else(|| {
+            retry(
+                &ReadError::changed("reward world"),
+                retry_at,
+                "world ownership",
+            )
+        })?;
         let mut reader = TargetReader::new(
             context.memory,
             image.base,
             image.actual.image_size,
             READ_LIMITS,
         )
-        .map_err(|error| retry(&error, retry_at))?;
+        .map_err(|error| retry(&error, retry_at, RELIC_REWARDS.topic))?;
         relic_rewards::read(&mut reader, rules, &owner.login.account_id, items, strings)
             .map(|choices| RelicRewardPicker::Open { choices })
-            .map_err(|error| retry(&error, retry_at))
+            .map_err(|error| retry(&error, retry_at, RELIC_REWARDS.topic))
     }
 
     fn clear_owner(
@@ -437,7 +451,7 @@ impl VisualTopics {
         context: &mut PollContext<'_>,
         mut retry: Retry,
     ) -> Result<(), ProviderError> {
-        if retry.reason == UnavailableReason::TargetNotReady {
+        if retry.reason.failure() == DependencyFailure::TargetNotReady {
             // Missing reward items and changing owners are expected during
             // transitions; retain the requested cadence until they settle.
             retry.at = context.now.saturating_add(RELIC_INTERVAL);
@@ -464,10 +478,10 @@ impl VisualTopics {
     }
 }
 
-fn retry(error: &ReadError, at: Duration) -> Retry {
+fn retry(error: &ReadError, at: Duration, dependency: &'static str) -> Retry {
     tracing::debug!(%error, "visual topic acquisition unavailable");
     Retry {
-        reason: error.into(),
+        reason: UnavailableReason::from(error).with_dependency(dependency),
         at,
     }
 }

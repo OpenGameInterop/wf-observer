@@ -254,13 +254,15 @@ fn rebuilding_recalculation_and_changed_samples_retry_then_recover() -> TestResu
         let mut session = session(base);
         let output = poll(&mut session, &mut memory, 0, &[&MASTERY])?;
         assert!(output.snapshots.is_empty());
-        assert!(matches!(
-            output.health.as_slice(),
+        assert_eq!(
+            output.health,
             [(
-                "warframe.mastery",
-                CapabilityHealth::Unavailable(UnavailableReason::TargetNotReady)
+                MASTERY.topic,
+                CapabilityHealth::Unavailable(
+                    UnavailableReason::TargetNotReady.with_dependency(MASTERY.topic)
+                )
             )]
-        ));
+        );
         memory.put(inventory + 0xd20, &[0]);
         memory.put(memory.data() + 0x0001_1c60, &[0]);
         snapshot(&poll(&mut session, &mut memory, 1, &[&MASTERY])?)?;

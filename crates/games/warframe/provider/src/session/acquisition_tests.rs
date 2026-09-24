@@ -155,7 +155,7 @@ fn account_replacement_during_acquisition_discards_output_and_resets() -> TestRe
     assert_eq!(
         output.health,
         [CapabilityHealth::Unavailable(
-            UnavailableReason::TargetNotReady
+            UnavailableReason::TargetNotReady.with_dependency("account identity")
         )]
     );
     let output = poll(&mut session, &mut memory, 2)?;
@@ -183,7 +183,7 @@ fn rebuild_and_sync_changes_reject_samples_then_recover() -> TestResult {
         assert_eq!(
             output.health,
             [CapabilityHealth::Unavailable(
-                UnavailableReason::TargetNotReady
+                UnavailableReason::TargetNotReady.with_dependency(INVENTORY.topic)
             )]
         );
         memory.put(marker, &[0]);
@@ -203,12 +203,18 @@ fn corrupt_counts_and_missing_record_bytes_are_not_empty_inventory() -> TestResu
         }
         let output = poll(&mut session(0x1_4000_0000), &mut memory, 0)?;
         assert!(output.snapshots.is_empty());
-        assert!(
-            matches!(output.health.as_slice(),
-                [CapabilityHealth::Unavailable(UnavailableReason::ReadFailed { .. })] if unreadable
-            ) || matches!(output.health.as_slice(),
-                [CapabilityHealth::Unavailable(UnavailableReason::ValidationFailed { .. })] if !unreadable
-            )
+        assert_eq!(
+            output.health,
+            [CapabilityHealth::Unavailable(
+                UnavailableReason::DependencyUnavailable {
+                    dependency: INVENTORY.topic.into(),
+                    failure: if unreadable {
+                        provider_sdk::DependencyFailure::ReadFailed
+                    } else {
+                        provider_sdk::DependencyFailure::ValidationFailed
+                    },
+                }
+            )]
         );
     }
     Ok(())

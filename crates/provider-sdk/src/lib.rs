@@ -16,7 +16,7 @@ pub mod memory;
 pub mod pe;
 
 pub use contract::{
-    CapabilityDescriptor, CapabilityHealth, EventSink, GameDescriptor, HealthSink, PollContext,
-    PollResult, Provider, ProviderError, ProviderManifest, ProviderSession, SnapshotDelivery,
-    UnavailableReason,
+    CapabilityDescriptor, CapabilityHealth, DependencyFailure, EventSink, GameDescriptor,
+    HealthSink, PollContext, PollResult, Provider, ProviderError, ProviderManifest,
+    ProviderSession, SnapshotDelivery, UnavailableReason,
 };

@@ -22,11 +22,11 @@ pub(crate) struct ItemTypeFacts {
 }
 
 pub(crate) const ITEM_TYPES: ItemTypeFacts = ItemTypeFacts {
-    leaf_vtable: Rva::new(0x0203_fba8),
-    leaf_constructor: Rva::new(0x0119_77c0),
+    leaf_vtable: Rva::new(0x0200_ad18),
+    leaf_constructor: Rva::new(0x0142_3e40),
     prefix_object: ObjectOffset::new(0x10),
     parent: ObjectOffset::new(0x18),
     suffix_token: ObjectOffset::new(0x2c),
-    type_pair_builder: Rva::new(0x015a_3770),
+    type_pair_builder: Rva::new(0x0055_4de0),
     strings: STRINGS,
 };

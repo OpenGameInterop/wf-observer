@@ -55,14 +55,14 @@ fn observed_intrinsics_and_missions_layouts_reject_changed_semantics()
         validate_intrinsics_layout(&mut image, base, crate::target::BUILD.image_size)?;
         validate_star_chart_layout(&mut image, base, crate::target::BUILD.image_size)?;
         for rva in [
-            0x00af_43e1,
-            0x00e5_8120,
-            0x00e5_81a1,
-            0x0164_c129,
-            0x010c_a514,
-            0x010c_a54c,
-            0x0008_4f74,
-            0x0226_9b58,
+            0x003d_69c8,
+            0x00ac_5ed0,
+            0x00ac_5f51,
+            0x0160_d729,
+            0x00fd_2ac4,
+            0x00fd_2afc,
+            0x0008_5914,
+            0x0224_0aa8,
         ] {
             let mut image = Image::new(base);
             *image
@@ -79,13 +79,13 @@ fn observed_intrinsics_and_missions_layouts_reject_changed_semantics()
             validate_star_chart_layout(&mut image, base, crate::target::BUILD.image_size)?;
         }
         for rva in [
-            0x018f_1a13,
-            0x00af_10fe,
-            0x022a_4880,
-            0x0100_62e7,
-            0x0100_6307,
-            0x0100_633d,
-            0x00ec_31ba,
+            0x006f_ace3,
+            0x003d_3785,
+            0x0227_11b0,
+            0x0050_b577,
+            0x0050_b5ca,
+            0x0050_b59e,
+            0x0089_55ca,
         ] {
             let mut image = Image::new(base);
             *image

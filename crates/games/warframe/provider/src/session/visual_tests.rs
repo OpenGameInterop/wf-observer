@@ -36,31 +36,31 @@ fn session() -> VisualTopics {
 fn memory(open: bool) -> Memory {
     let mut m = Memory::new(BASE);
     for (address, pointer) in [
-        (BASE + 0x0272_fd80, CLIENT + 0x8000),
+        (BASE + 0x0270_8d80, CLIENT + 0x8000),
         (CLIENT + 0x8000, CLIENT),
-        (CLIENT, BASE + 0x021c_a558),
+        (CLIENT, BASE + 0x0219_7448),
         (CLIENT + 0x5e0, OVERLAY + 0x8000),
         (OVERLAY + 0x8000, OVERLAY),
-        (OVERLAY, BASE + 0x0222_2300),
+        (OVERLAY, BASE + 0x021e_f380),
         (OVERLAY + 0x48, FLASH + 0x8000),
         (FLASH + 0x8000, FLASH),
-        (FLASH, BASE + 0x0222_1518),
+        (FLASH, BASE + 0x021e_e588),
         (MOVIES, MOVIE + 0x8000),
         (MOVIE + 0x8000, MOVIE),
-        (MOVIE, BASE + 0x0222_00f8),
+        (MOVIE, BASE + 0x021e_d0c0),
         (MOVIE + 0x140, OWNER + 0x8000),
         (OWNER + 0x8000, OWNER),
         (MOVIE + 0x120, PATH),
         (CLIENT + 0x788, CONTEXT + 0x8000),
         (CONTEXT + 0x8000, CONTEXT),
-        (CONTEXT, BASE + 0x021c_ecc0),
+        (CONTEXT, BASE + 0x0219_bbc0),
         (CONTEXT + 0x120, REGION + 0x8000),
         (REGION + 0x8000, REGION),
-        (REGION, BASE + 0x021d_29d8),
-        (BASE + 0x021d_29d8 + 0x300, BASE + 0x0119_8130),
+        (REGION, BASE + 0x0219_f8e8),
+        (BASE + 0x0219_f8e8 + 0x300, BASE + 0x004c_7600),
         (REGION + 0x240, RULES + 0x8000),
         (RULES + 0x8000, RULES),
-        (RULES, BASE + 0x0234_d910),
+        (RULES, BASE + 0x0231_b9c8),
     ] {
         m.put(address, &pointer.to_le_bytes());
     }
@@ -69,7 +69,7 @@ fn memory(open: bool) -> Memory {
     m.put(MOVIE + 0x118, &[0]);
     m.put(MOVIE + 0x5440, &[0]);
     path(&mut m, "/Lotus/Interface/ProjectionRewardChoice.swf");
-    vector(&mut m, RULES + 0x1870, REWARDS, 3 * 0x70);
+    vector(&mut m, RULES + 0x18b0, REWARDS, 3 * 0x70);
     // Remote/local/remote memory order; the local and first remote share an item.
     for (i, (account, item)) in [
         (OTHER_ACCOUNT, 0x30_0000),
@@ -202,7 +202,7 @@ fn poll(
 #[test]
 fn screens_work_without_login_and_relic_consumers_share_the_same_source() -> TestResult {
     let mut m = memory(true);
-    m.omit(BASE + 0x027a_53c0);
+    m.omit(BASE + 0x0278_a2d0);
     let out = poll(&mut session(), &mut m, &[&SCREENS], 0)?;
     assert_eq!(out.screens()?.screens, [Screen::RelicRewards]);
     assert!(out.health.is_empty());
@@ -217,7 +217,7 @@ fn screens_work_without_login_and_relic_consumers_share_the_same_source() -> Tes
 #[test]
 fn relic_rewards_need_account_identity_but_not_profile_data() -> TestResult {
     let mut memory = memory(true);
-    memory.omit(BASE + 0x0215_1328 + 0x390);
+    memory.omit(BASE + 0x0211_ddc8 + 0x388);
     memory.omit(memory.heap() + 0x4_0000 + 0x208);
     let output = poll(&mut session(), &mut memory, &[&SCREENS, &RELIC_REWARDS], 0)?;
     assert_eq!(output.screens()?.screens, [Screen::RelicRewards]);
@@ -254,12 +254,12 @@ fn open_picker_is_initial_state_with_order_and_duplicate_choices_preserved() -> 
 fn closed_picker_does_not_read_reward_records_and_idle_has_no_reads() -> TestResult {
     let mut s = session();
     let mut m = memory(false);
-    m.omit(RULES + 0x1870);
+    m.omit(RULES + 0x18b0);
     assert_eq!(
         poll(&mut s, &mut m, &[&RELIC_REWARDS], 0)?.relic()?.picker,
         RelicRewardPicker::Closed
     );
-    assert!(!m.reads.contains(&(RULES + 0x1870)));
+    assert!(!m.reads.contains(&(RULES + 0x18b0)));
     m.reads.clear();
     poll(&mut s, &mut m, &[], 1)?;
     assert!(m.reads.is_empty());
@@ -615,9 +615,9 @@ fn reward_vector_bounds_and_ambiguous_account_fields_fail_before_publication() -
     for case in 0..7 {
         let mut m = memory(true);
         match case {
-            0 => m.put(RULES + 0x1878, &(5_u32 * 0x70).to_le_bytes()),
-            1 => m.put(RULES + 0x187c, &(65_u32 * 0x70).to_le_bytes()),
-            2 => m.put(RULES + 0x1878, &113_u32.to_le_bytes()),
+            0 => m.put(RULES + 0x18b8, &(5_u32 * 0x70).to_le_bytes()),
+            1 => m.put(RULES + 0x18bc, &(65_u32 * 0x70).to_le_bytes()),
+            2 => m.put(RULES + 0x18b8, &113_u32.to_le_bytes()),
             3 => m.put(REWARDS + 0x48, &3_u64.to_le_bytes()),
             4 => m.put(IDS, ACCOUNT), // Duplicate account, not a duplicate item.
             5 => m.put(IDS + 0x100, b"111111111111111111111111"), // No local choice.
@@ -649,7 +649,7 @@ fn unqualified_entries_and_empty_open_transition_are_valid() -> TestResult {
             .picker,
         RelicRewardPicker::Open { choices: vec![] }
     );
-    vector(&mut m, RULES + 0x1870, 0, 0);
+    vector(&mut m, RULES + 0x18b0, 0, 0);
     assert_eq!(
         poll(&mut session(), &mut m, &[&RELIC_REWARDS], 0)?
             .relic()?

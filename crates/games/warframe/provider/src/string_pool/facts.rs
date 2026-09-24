@@ -12,6 +12,6 @@ pub(crate) struct StringPoolFacts {
 }
 
 pub(crate) const STRINGS: StringPoolFacts = StringPoolFacts {
-    root: Rva::new(0x028a_39a0),
-    decoder: Rva::new(0x0030_9440),
+    root: Rva::new(0x0288_d610),
+    decoder: Rva::new(0x0071_5f40),
 };

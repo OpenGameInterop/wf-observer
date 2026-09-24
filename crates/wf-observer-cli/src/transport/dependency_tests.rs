@@ -63,26 +63,21 @@ async fn dependency_failures_cross_the_transport_and_invalidate_only_their_topic
                 reason: reason.clone()
             }
         );
-        assert_eq!(
-            inventory.read().await,
-            Err(sdk::ObserverError::Request {
-                error: sdk::RequestError::Unavailable {
-                    reason: reason.clone()
-                },
-            })
-        );
-        assert_eq!(
-            inventory.cached().await,
-            Err(sdk::ObserverError::Request {
-                error: sdk::RequestError::Unavailable {
-                    reason: reason.clone()
-                },
-            })
-        );
+        let error = sdk::ObserverError::Request {
+            error: sdk::RequestError::Unavailable {
+                reason: reason.clone(),
+            },
+        };
+        assert_eq!(inventory.read().await, Err(error.clone()));
+        assert_eq!(inventory.cached().await, Err(error));
         let status = client.status().await?;
-        let sdk::TargetActivity::Observing { topics, .. } = &status.targets[0].activity else {
+        let sdk::TargetActivity::Observing {
+            game_build, topics, ..
+        } = &status.targets[0].activity
+        else {
             anyhow::bail!("session stopped observing");
         };
+        assert_eq!(game_build.as_deref(), Some("test-build"));
         let health = &topics
             .iter()
             .find(|topic| topic.topic.topic == "warframe.inventory")
@@ -118,6 +113,9 @@ fn publish_failure(
         .context("missing inventory capability")?;
     let ticket = test.state.ticket("inventory").context("missing session")?;
     let batch = PollBatch::new(manifest);
+    // Match snapshot publications so this health change does not also emit a
+    // SessionChanged notification carrying the previous inventory state.
+    batch.game_build(Some("test-build"))?;
     batch.health().update(
         cap,
         provider_sdk::CapabilityHealth::Unavailable(

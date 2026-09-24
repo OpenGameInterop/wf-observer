@@ -149,7 +149,7 @@ fn validate_record(
             reader.read_module(item_type_reader, &mut item)?;
             let stride_prefix = &stride[..3];
             let proven_stride = stride_prefix == [0x49, 0x8d, 0xae]
-                || stride_prefix == [0x49, 0x69, 0xde]
+                || stride_prefix == [0x48, 0x69, 0xdd]
                 || stride_prefix == [0x4c, 0x8d, 0xb5];
             if !proven_stride
                 || stride[3..] != facts.bytes.to_le_bytes()

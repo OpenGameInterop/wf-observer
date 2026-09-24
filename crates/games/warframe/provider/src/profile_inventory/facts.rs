@@ -8,6 +8,11 @@ pub(crate) struct InventoryOwnerFacts {
     pub(crate) getter: Rva,
     /// Embedded inventory's byte offset within profile data, not a pointer field.
     pub(crate) offset: ObjectOffset,
+}
+
+/// Profile-wide coherence, independent of the embedded inventory's location.
+#[derive(Clone, Debug, ..Eq)]
+pub(crate) struct ProfileCommitFacts {
     /// One byte relative to profile data; nonzero means rebuilding, so reject the sample.
     pub(crate) force_update: ObjectOffset,
     /// 24 bytes relative to profile data, compared before/after reading all families.
@@ -19,6 +24,9 @@ pub(crate) struct InventoryOwnerFacts {
 pub(crate) const INVENTORY_OWNER: InventoryOwnerFacts = InventoryOwnerFacts {
     getter: Rva::new(0x00f6_f880),
     offset: ObjectOffset::new(0xd5d0),
+};
+
+pub(crate) const PROFILE_COMMIT: ProfileCommitFacts = ProfileCommitFacts {
     force_update: ObjectOffset::new(0x0001_1c60),
     sync_tokens: ObjectOffset::new(0xfdc0),
     commit: InventoryCommitFacts {

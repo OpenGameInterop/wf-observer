@@ -36,7 +36,7 @@ impl ObjectIdentity {
 /// detects an account switch that reuses the same objects. Addresses alone are
 /// not lifetime tokens; reuse between observations can still go undetected.
 #[derive(Clone, Debug, Hash, ..Eq)]
-pub(crate) struct LoginIdentity {
+pub(crate) struct AccountIdentity {
     /// Stable account identifier used to detect an in-place account replacement.
     pub(crate) account_id: AccountId,
     /// Process-global profile-manager ownership/control identity.
@@ -47,8 +47,12 @@ pub(crate) struct LoginIdentity {
     pub(crate) profile_control: ObjectIdentity,
     /// Selected active profile identity.
     pub(crate) profile: ObjectIdentity,
-    /// Profile-data ownership/control identity.
-    pub(crate) profile_data_control: ObjectIdentity,
-    /// Profile-data object identity.
-    pub(crate) profile_data: ObjectIdentity,
+}
+
+/// Profile data has its own lifetime; replacing it does not replace the account.
+#[derive(Clone, Debug, Hash, ..Eq)]
+pub(crate) struct ProfileDataIdentity {
+    pub(crate) account: AccountIdentity,
+    pub(crate) control: ObjectIdentity,
+    pub(crate) object: ObjectIdentity,
 }

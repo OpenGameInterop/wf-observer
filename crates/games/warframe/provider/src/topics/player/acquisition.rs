@@ -5,7 +5,7 @@ use warframe_model::{PlayerName, PlayerSnapshot};
 use super::facts::PLAYER;
 use crate::{
     native_string::{player_name, read_string},
-    roots::LoginIdentity,
+    roots::AccountIdentity,
     target::READ_LIMITS,
 };
 
@@ -13,7 +13,7 @@ pub(crate) fn read_player(
     memory: &mut (impl ProcessMemory + ?Sized),
     base: u64,
     size: u32,
-    login: &LoginIdentity,
+    login: &AccountIdentity,
 ) -> Result<PlayerSnapshot, ReadError> {
     let mut reader = TargetReader::new(memory, base, size, READ_LIMITS)?;
     let profile = login.profile.get();

@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     profile_inventory::{read_commit_state, read_vector},
-    roots::LoginIdentity,
+    roots::ProfileDataIdentity,
     string_pool::{StringTokenCache, facts::STRINGS},
     target::READ_LIMITS,
 };
@@ -17,11 +17,11 @@ pub(crate) fn read_star_chart(
     memory: &mut (impl ProcessMemory + ?Sized),
     base: u64,
     image_size: u32,
-    login: &LoginIdentity,
+    login: &ProfileDataIdentity,
     strings: &mut StringTokenCache,
 ) -> Result<StarChartSnapshot, ReadError> {
     let mut reader = TargetReader::new(memory, base, image_size, READ_LIMITS)?;
-    let profile = login.profile_data.get();
+    let profile = login.object.get();
     let commit = read_commit_state(&mut reader, profile)?;
     let (address, bytes) = read_vector(&mut reader, profile, VECTOR, RECORD_BYTES)?;
     let before = decode_records(&bytes)?;
@@ -49,6 +49,9 @@ pub(crate) fn read_star_chart(
     {
         return Err(ReadError::changed("mission progression"));
     }
-    StarChartSnapshot::new(login.account_id.clone(), nodes.into_values().collect())
-        .map_err(|_| ReadError::invalid("mission node records"))
+    StarChartSnapshot::new(
+        login.account.account_id.clone(),
+        nodes.into_values().collect(),
+    )
+    .map_err(|_| ReadError::invalid("mission node records"))
 }

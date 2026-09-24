@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
     item_type::ItemTypeCache,
-    roots::{self, LoginIdentity, LoginResolution},
+    roots::{self, AccountIdentity, AccountResolution},
     string_pool::StringTokenCache,
     target::READ_LIMITS,
     topics::{
@@ -46,14 +46,14 @@ const READ_RETRY: Duration = Duration::from_secs(1);
 
 #[derive(Clone, ..Eq)]
 struct RelicOwner {
-    login: LoginIdentity,
+    login: AccountIdentity,
     world: WorldIdentity,
     ui: UiIdentity,
 }
 
 struct RelicAcquisition<'a> {
     screens: &'a ScreenSample,
-    before: Result<(LoginIdentity, WorldIdentity), Retry>,
+    before: Result<(AccountIdentity, WorldIdentity), Retry>,
     retry_at: Duration,
 }
 
@@ -160,15 +160,19 @@ impl VisualTopics {
         strings: &mut StringTokenCache,
         layouts: &mut SharedLayouts,
     ) -> Result<(), ProviderError> {
-        let ready = self.screen_layout.validate(context.now, SCREENS.topic, || {
-            let mut reader = TargetReader::new(
-                context.memory,
-                image.base,
-                image.actual.image_size,
-                READ_LIMITS,
-            )?;
-            screens::validate(&mut reader)
-        });
+        let ready = layouts
+            .client(context.memory, image, context.now)
+            .and_then(|()| {
+                self.screen_layout.validate(context.now, SCREENS.topic, || {
+                    let mut reader = TargetReader::new(
+                        context.memory,
+                        image.base,
+                        image.actual.image_size,
+                        READ_LIMITS,
+                    )?;
+                    screens::validate(&mut reader)
+                })
+            });
         if let Err(retry) = ready {
             return self.unavailable(context, &retry);
         }
@@ -316,9 +320,12 @@ impl VisualTopics {
         image: Executable,
         layouts: &mut SharedLayouts,
     ) -> Result<(), Retry> {
-        layouts.login.validate(context.now, "relic login", || {
-            roots::validate_login_layout(context.memory, image.base, image.actual.image_size)
-        })?;
+        layouts
+            .account
+            .validate(context.now, "account identity", || {
+                roots::validate_account_layout(context.memory, image.base, image.actual.image_size)
+            })?;
+        layouts.world(context.memory, image, context.now)?;
         self.relic_layout
             .validate(context.now, RELIC_REWARDS.topic, || {
                 let mut reader = TargetReader::new(
@@ -335,24 +342,24 @@ impl VisualTopics {
         context: &mut PollContext<'_>,
         image: Executable,
         retry_at: Duration,
-    ) -> Result<(LoginIdentity, WorldIdentity), Retry> {
-        let login = match roots::resolve_login(context.memory, image.base, image.actual.image_size)
-        {
-            Ok(LoginResolution::Present(login)) => login,
-            Ok(LoginResolution::Absent) => {
-                return Err(Retry {
-                    reason: UnavailableReason::TargetNotReady,
-                    at: retry_at,
-                });
-            }
-            Err(error) => {
-                tracing::debug!(%error, "relic reward login unavailable");
-                return Err(Retry {
-                    reason: (&error).into(),
-                    at: retry_at,
-                });
-            }
-        };
+    ) -> Result<(AccountIdentity, WorldIdentity), Retry> {
+        let login =
+            match roots::resolve_account(context.memory, image.base, image.actual.image_size) {
+                Ok(AccountResolution::Present(login)) => login,
+                Ok(AccountResolution::Absent) => {
+                    return Err(Retry {
+                        reason: UnavailableReason::TargetNotReady,
+                        at: retry_at,
+                    });
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "relic reward login unavailable");
+                    return Err(Retry {
+                        reason: (&error).into(),
+                        at: retry_at,
+                    });
+                }
+            };
         let mut reader = TargetReader::new(
             context.memory,
             image.base,

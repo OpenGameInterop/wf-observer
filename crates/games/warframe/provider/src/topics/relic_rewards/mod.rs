@@ -14,7 +14,7 @@ use crate::{
     world::{self, SharedObject},
 };
 
-const VECTOR: ObjectOffset = ObjectOffset::new(0x1870);
+const VECTOR: ObjectOffset = ObjectOffset::new(0x18b0);
 const RECORD_BYTES: usize = 0x70;
 const MAX_CHOICES: usize = 4;
 

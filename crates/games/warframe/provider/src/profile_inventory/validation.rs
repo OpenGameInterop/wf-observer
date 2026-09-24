@@ -32,7 +32,7 @@ pub(crate) fn validate_commit_fields(
     let init = reader.read_module_array::<7>(facts.force_update_init)?;
     let read = reader.read_module_array::<7>(facts.force_update_read)?;
     // The same profile-data byte is initialized and read as an unsigned byte.
-    if init[..3] != [0x44, 0x88, 0xa7]
+    if init[..3] != [0x40, 0x88, 0xaf]
         || init[3..] != PROFILE_COMMIT.force_update.get().to_le_bytes()
         || read[..3] != [0x0f, 0xb6, 0x90]
         || read[3..] != PROFILE_COMMIT.force_update.get().to_le_bytes()

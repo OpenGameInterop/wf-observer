@@ -22,8 +22,8 @@ pub(crate) struct ExecutableFingerprint {
 
 /// Build associated with the compiled layouts; differing fingerprints still undergo validation.
 pub(crate) const BUILD: ExecutableFingerprint = ExecutableFingerprint {
-    timestamp: 0x6a85_c6b0,
-    image_size: 0x02ce_f000,
+    timestamp: 0x6ab2_e96d,
+    image_size: 0x02cd_8000,
 };
 
 pub(crate) type FingerprintError = HeaderError<memory_reader::AccessError>;

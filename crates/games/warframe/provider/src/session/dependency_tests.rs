@@ -23,7 +23,7 @@ fn session() -> WarframeSession {
 fn memory() -> Memory {
     let mut memory = Memory::new(BASE);
     let profile = memory.heap() + 0x4_0000;
-    memory.put(BASE + 0x0215_1328 + 8, &(BASE + 0x008b_9520).to_le_bytes());
+    memory.put(BASE + 0x0211_ddc8 + 8, &(BASE + 0x0146_0580).to_le_bytes());
     let mut name = [0; 16];
     name[..5].copy_from_slice(b"Tenno");
     name[15] = 10;
@@ -93,17 +93,17 @@ fn player_validates_account_without_profile_data_code_or_objects() -> TestResult
     let mut memory = memory();
     // Original account getter/manager instructions, independent of production facts.
     let mut getter = vec![0x48, 0x8b, 0x05];
-    getter.extend((0x027a_53c0_i32 - 0x0029_cc30 - 7).to_le_bytes());
+    getter.extend((0x0278_a2d0i32 - 0x0124_3dd0 - 7).to_le_bytes());
     getter.extend([0x48, 0x8b, 0, 0xc3]);
-    memory.put(BASE + 0x0029_cc30, &getter);
-    memory.put(BASE + 0x0024_4ee0, &[0x48, 0x8b, 0x81, 0xd8, 1, 0, 0, 0xc3]);
-    memory.put(BASE + 0x0056_ee90, &[0x48, 0x8d, 0x81, 0x18, 1, 0, 0, 0xc3]);
+    memory.put(BASE + 0x0124_3dd0, &getter);
+    memory.put(BASE + 0x0119_f7a0, &[0x48, 0x8b, 0x81, 0xd8, 1, 0, 0, 0xc3]);
+    memory.put(BASE + 0x002c_1760, &[0x48, 0x8d, 0x81, 0x18, 1, 0, 0, 0xc3]);
     let mut lookup = [0; 31];
     lookup[15..22].copy_from_slice(&[0x48, 0x8b, 0x99, 0x30, 2, 0, 0]);
     lookup[25..31].copy_from_slice(&[0x8b, 0x81, 0x38, 2, 0, 0]);
-    memory.put(BASE + 0x0020_9260, &lookup);
+    memory.put(BASE + 0x00a5_2ec0, &lookup);
     memory.put(
-        BASE + 0x00f7_a940,
+        BASE + 0x013f_df80,
         &[0x83, 0xb9, 0x68, 1, 0, 0, 4, 0x0f, 0x94, 0xc0, 0xc3],
     );
     memory.omit(memory.heap() + 0x4_0000 + 0x208);
@@ -117,7 +117,7 @@ fn player_validates_account_without_profile_data_code_or_objects() -> TestResult
         session.layouts.profile_data,
         CachedCheck::Unchecked
     ));
-    assert!(!memory.reads.contains(&(BASE + 0x008e_1ff0)));
+    assert!(!memory.reads.contains(&(BASE + 0x0086_6c20)));
     assert!(!memory.reads.contains(&(memory.heap() + 0x4_0000 + 0x208)));
     Ok(())
 }
@@ -178,8 +178,8 @@ fn incompatible_account_and_client_roots_name_independent_blockers() -> TestResu
     use crate::session::{RELIC_REWARDS, SCREENS};
     let mut memory = memory();
     // Invalid instructions at the original witnesses; no current-build facts.
-    memory.put(BASE + 0x0029_cc30, &[0; 11]);
-    memory.put(BASE + 0x0001_f647, &[0; 12]);
+    memory.put(BASE + 0x0124_3dd0, &[0; 11]);
+    memory.put(BASE + 0x0001_f7a7, &[0; 12]);
     let mut session = session();
     session.layouts = SharedLayouts::default();
     let demand = [

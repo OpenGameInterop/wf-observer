@@ -10,7 +10,7 @@ pub(crate) struct PlayerFacts {
 }
 
 pub(crate) const PLAYER: PlayerFacts = PlayerFacts {
-    getter: Rva::new(0x008b_9520),
+    getter: Rva::new(0x0146_0580),
     slot: VtableSlot::new(8),
     fallback: ObjectOffset::new(0x40),
     preferred: ObjectOffset::new(0x50),

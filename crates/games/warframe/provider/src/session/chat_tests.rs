@@ -30,20 +30,20 @@ fn string(memory: &mut Memory, at: u64, value: &str) {
 }
 
 fn local_name(memory: &mut Memory, value: &str) {
-    memory.put(BASE + 0x0215_1328 + 8, &(BASE + 0x008b_9520).to_le_bytes());
+    memory.put(BASE + 0x0211_ddc8 + 8, &(BASE + 0x0146_0580).to_le_bytes());
     string(memory, memory.heap() + 0x4_0000 + 0x50, value);
     string(memory, memory.heap() + 0x4_0000 + 0x40, "");
 }
 
 fn history(memory: &mut Memory, key: &str, entries: &[(u64, &str, &str)]) {
     // Explicit fixture offsets do not follow production facts.
-    let head = memory.data() + 0x11b10;
+    let head = memory.data() + 0x11ea8;
     let channel = memory.heap() + 0x40_0000;
     let sentinel = channel + 0x28;
     let node = |id| channel + 0x100 + id * 0x100;
     memory.put(
-        BASE + 0x0237_e5c0 + 0x248,
-        &(BASE + 0x00c2_3eb0).to_le_bytes(),
+        BASE + 0x0234_c958 + 0x248,
+        &(BASE + 0x00f0_f100).to_le_bytes(),
     );
     for (at, value) in [
         (head, channel),

@@ -5,15 +5,15 @@ use provider_sdk::memory::{ObjectOffset, ReadError, Rva, TargetReader, VtableSlo
 
 use crate::roots::{ACCOUNT, ObjectIdentity};
 
-pub(crate) const CLIENT_ROOT: Rva = Rva::new(0x0272_fd80);
-const CLIENT_STORAGE: Rva = Rva::new(0x0272_fcd0);
-const CLIENT_INSTALLER: Rva = Rva::new(0x0001_f647);
-const CLIENT_VTABLE: Rva = Rva::new(0x021c_a558);
-const CONTEXT_VTABLE: Rva = Rva::new(0x021c_ecc0);
-const REGION_VTABLE: Rva = Rva::new(0x021d_29d8);
-const RULES_GETTER: Rva = Rva::new(0x0119_8130);
-pub(crate) const MISSION_VTABLE: Rva = Rva::new(0x0234_d910);
-const MISSION_REFERENCE: Rva = Rva::new(0x00ba_af5c);
+pub(crate) const CLIENT_ROOT: Rva = Rva::new(0x0270_8d80);
+const CLIENT_STORAGE: Rva = Rva::new(0x0270_8cd0);
+const CLIENT_INSTALLER: Rva = Rva::new(0x0001_f7a7);
+const CLIENT_VTABLE: Rva = Rva::new(0x0219_7448);
+const CONTEXT_VTABLE: Rva = Rva::new(0x0219_bbc0);
+const REGION_VTABLE: Rva = Rva::new(0x0219_f8e8);
+const RULES_GETTER: Rva = Rva::new(0x004c_7600);
+pub(crate) const MISSION_VTABLE: Rva = Rva::new(0x0231_b9c8);
+const MISSION_REFERENCE: Rva = Rva::new(0x0122_234c);
 
 #[derive(Debug, ..Copy, ..Eq)]
 pub(crate) struct SharedObject {

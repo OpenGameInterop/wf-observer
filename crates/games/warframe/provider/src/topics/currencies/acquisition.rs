@@ -76,10 +76,10 @@ mod tests {
         fn default() -> Self {
             Self {
                 words: [
-                    [0x6609_80bf, 0xcb8d_3255], // i32::MAX Credits
-                    [0x99f6_af40, 0x3472_1daa], // zero Endo
-                    [0x6609_30bf, 0xcb8d_8255], // -7 tradable Platinum
-                    [0x99f0_6f40, 0x3474_ddaa], // 50 non-tradable Platinum
+                    [0xb478_7537, 0x2870_3f70], // i32::MAX Credits
+                    [0x4b87_dac8, 0xd78f_908f], // zero Endo
+                    [0xb478_8537, 0x2870_cf70], // -7 tradable Platinum
+                    [0x4b8e_1ac8, 0xd786_508f], // 50 non-tradable Platinum
                 ],
                 reads: 0,
                 change: false,
@@ -103,7 +103,7 @@ mod tests {
                 address,
                 length: output.len(),
             };
-            let index = [0xd9a8, 0xd998, 0xd9b0, 0xd9b8]
+            let index = [0xd9f0, 0xd9e0, 0xd9f8, 0xda00]
                 .iter()
                 .position(|offset| address == PROFILE + offset)
                 .ok_or_else(error)?;
@@ -111,7 +111,7 @@ mod tests {
                 return Err(error());
             }
             if self.change && self.reads == 4 {
-                self.words[0] = [0x6609_a0bf, 0xcb8d_1255]; // i32::MAX - 1
+                self.words[0] = [0xb478_5537, 0x2870_1f70]; // i32::MAX - 1
             }
             output[..4].copy_from_slice(&self.words[index][0].to_le_bytes());
             output[4..].copy_from_slice(&self.words[index][1].to_le_bytes());

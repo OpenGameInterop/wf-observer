@@ -22,20 +22,20 @@ pub(crate) struct ProfileCommitFacts {
 }
 
 pub(crate) const INVENTORY_OWNER: InventoryOwnerFacts = InventoryOwnerFacts {
-    getter: Rva::new(0x00f6_f880),
-    offset: ObjectOffset::new(0xd5d0),
+    getter: Rva::new(0x0148_fde0),
+    offset: ObjectOffset::new(0xd608),
 };
 
 pub(crate) const PROFILE_COMMIT: ProfileCommitFacts = ProfileCommitFacts {
-    force_update: ObjectOffset::new(0x0001_1c60),
-    sync_tokens: ObjectOffset::new(0xfdc0),
+    force_update: ObjectOffset::new(0x0001_1ff8),
+    sync_tokens: ObjectOffset::new(0xffe0),
     commit: InventoryCommitFacts {
-        constructor_vtable: Rva::new(0x0091_3ac4),
-        force_update_init: Rva::new(0x0091_4a70),
-        force_update_read: Rva::new(0x01b6_90c9),
-        sync_tokens_init: Rva::new(0x0091_458e),
-        sync_tokens_compare: Rva::new(0x0192_2dbf),
-        compare_bytes: Rva::new(0x01ff_8f20),
+        constructor_vtable: Rva::new(0x003e_fc20),
+        force_update_init: Rva::new(0x003f_0bbc),
+        force_update_read: Rva::new(0x01b1_2a89),
+        sync_tokens_init: Rva::new(0x003f_06e5),
+        sync_tokens_compare: Rva::new(0x0141_d6af),
+        compare_bytes: Rva::new(0x01fc_5670),
     },
 };
 

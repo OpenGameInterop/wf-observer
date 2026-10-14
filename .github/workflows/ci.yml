@@ -324,7 +324,7 @@ jobs:
 
       - name: Set up Gradle
         if: needs.plan.outputs.jvm == 'true'
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
 
       - name: Resolve Gradle plugins
         if: needs.plan.outputs.jvm == 'true'
@@ -357,7 +357,7 @@ jobs:
 
       - name: Install Node.js
         if: needs.plan.outputs.wasm == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
 

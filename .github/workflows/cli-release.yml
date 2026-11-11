@@ -89,7 +89,7 @@ jobs:
           rustup target add "$TARGET"
 
       - name: Restore Rust dependencies
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-cli-linux-x64
           save-if: false
@@ -133,7 +133,7 @@ jobs:
             | gzip --no-name > "release-assets/$asset"
 
       - name: Upload Linux archive
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cli-linux-x64
           path: release-assets/*.tar.gz
@@ -163,7 +163,7 @@ jobs:
           rustup target add $env:TARGET
 
       - name: Restore Rust dependencies
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-cli-windows-x64-static-crt
           save-if: false
@@ -223,7 +223,7 @@ jobs:
           Compress-Archive -Path (Join-Path $staging "*") -DestinationPath (Join-Path "release-assets" $asset)
 
       - name: Upload Windows archive
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cli-windows-x64
           path: release-assets/*.zip
@@ -238,7 +238,7 @@ jobs:
 
     steps:
       - name: Download platform archives
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: cli-*
           path: release-assets
@@ -262,7 +262,7 @@ jobs:
           sha256sum "${archives[@]}" > SHA256SUMS
 
       - name: Upload release assets
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cli-release-assets
           path: release-assets
@@ -283,7 +283,7 @@ jobs:
           persist-credentials: false
 
       - name: Download release assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cli-release-assets
           path: release-assets
@@ -338,7 +338,7 @@ jobs:
             package-metadata
 
       - name: Upload package metadata
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: cli-package-metadata
           path: package-metadata
@@ -356,7 +356,7 @@ jobs:
 
     steps:
       - name: Download release assets
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cli-release-assets
           path: release-assets
@@ -449,7 +449,7 @@ jobs:
           pacman --sync --refresh --sysupgrade --needed --noconfirm git namcap openssh
 
       - name: Download package metadata
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cli-package-metadata
           path: package-metadata
@@ -550,7 +550,7 @@ jobs:
 
     steps:
       - name: Download package metadata
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: cli-package-metadata
           path: package-metadata
